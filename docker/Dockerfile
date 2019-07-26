@@ -14,11 +14,11 @@
 FROM centos:centos7
 LABEL maintainer="Presto community <https://prestosql.io/community.html>"
 
-ENV JAVA_HOME /usr/lib/jvm/java-11
+ENV JAVA_HOME /usr/lib/jvm/java-1.8.0
 RUN \
     set -xeu && \
     yum -y -q update && \
-    yum -y -q install java-11-openjdk-devel less && \
+    yum -y -q install java-1.8.0-openjdk-devel less && \
     yum -q clean all && \
     rm -rf /var/cache/yum && \
     rm -rf /tmp/* /var/tmp/* && \

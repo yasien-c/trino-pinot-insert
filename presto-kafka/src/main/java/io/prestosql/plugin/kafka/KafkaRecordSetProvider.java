@@ -17,6 +17,7 @@ import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import io.prestosql.decoder.DispatchingRowDecoderFactory;
 import io.prestosql.decoder.RowDecoder;
+import io.prestosql.decoder.avro.AvroSchemaConverter;
 import io.prestosql.spi.connector.ColumnHandle;
 import io.prestosql.spi.connector.ConnectorRecordSetProvider;
 import io.prestosql.spi.connector.ConnectorSession;
@@ -24,6 +25,9 @@ import io.prestosql.spi.connector.ConnectorSplit;
 import io.prestosql.spi.connector.ConnectorTableHandle;
 import io.prestosql.spi.connector.ConnectorTransactionHandle;
 import io.prestosql.spi.connector.RecordSet;
+import io.prestosql.spi.type.Type;
+import io.prestosql.spi.type.TypeManager;
+import org.apache.avro.Schema;
 
 import javax.inject.Inject;
 
@@ -43,12 +47,14 @@ public class KafkaRecordSetProvider
 {
     private DispatchingRowDecoderFactory decoderFactory;
     private final KafkaSimpleConsumerManager consumerManager;
+    private final AvroSchemaConverter avroSchemaConverter;
 
     @Inject
-    public KafkaRecordSetProvider(DispatchingRowDecoderFactory decoderFactory, KafkaSimpleConsumerManager consumerManager)
+    public KafkaRecordSetProvider(DispatchingRowDecoderFactory decoderFactory, KafkaSimpleConsumerManager consumerManager, TypeManager typeManager)
     {
         this.decoderFactory = requireNonNull(decoderFactory, "decoderFactory is null");
         this.consumerManager = requireNonNull(consumerManager, "consumerManager is null");
+        this.avroSchemaConverter = new AvroSchemaConverter(requireNonNull(typeManager, "typeManager is null"));
     }
 
     @Override
@@ -59,7 +65,12 @@ public class KafkaRecordSetProvider
         List<KafkaColumnHandle> kafkaColumns = columns.stream()
                 .map(KafkaHandleResolver::convertColumnHandle)
                 .collect(ImmutableList.toImmutableList());
+        String dataSchema = requireNonNull(getDecoderParameters(kafkaSplit.getMessageDataSchemaContents()).get("dataSchema"), "dataSchema cannot be null");
 
+        Schema parsedSchema = (new Schema.Parser()).parse(dataSchema);
+        Type rowType = avroSchemaConverter.convert(parsedSchema);
+        KafkaColumnHandle columnHandle = new KafkaColumnHandle(0, "record", rowType, null, null, null, false, false, false);
+        kafkaColumns = ImmutableList.<KafkaColumnHandle>builder().addAll(kafkaColumns).add(columnHandle).build();
         RowDecoder keyDecoder = decoderFactory.create(
                 kafkaSplit.getKeyDataFormat(),
                 getDecoderParameters(kafkaSplit.getKeyDataSchemaContents()),

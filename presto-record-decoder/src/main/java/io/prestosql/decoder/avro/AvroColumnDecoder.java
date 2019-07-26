@@ -26,6 +26,7 @@ import io.prestosql.spi.type.BigintType;
 import io.prestosql.spi.type.BooleanType;
 import io.prestosql.spi.type.DoubleType;
 import io.prestosql.spi.type.Type;
+import io.prestosql.spi.type.TypeManager;
 import io.prestosql.spi.type.VarbinaryType;
 import io.prestosql.spi.type.VarcharType;
 import org.apache.avro.generic.GenericRecord;
@@ -44,6 +45,7 @@ import static io.prestosql.spi.type.StandardTypes.BIGINT;
 import static io.prestosql.spi.type.StandardTypes.BOOLEAN;
 import static io.prestosql.spi.type.StandardTypes.DOUBLE;
 import static io.prestosql.spi.type.StandardTypes.MAP;
+import static io.prestosql.spi.type.StandardTypes.ROW;
 import static io.prestosql.spi.type.StandardTypes.VARBINARY;
 import static io.prestosql.spi.type.StandardTypes.VARCHAR;
 import static io.prestosql.spi.type.Varchars.isVarcharType;
@@ -56,8 +58,9 @@ public class AvroColumnDecoder
     private final Type columnType;
     private final String columnMapping;
     private final String columnName;
+    private final AvroSchemaConverter avroSchemaConverter;
 
-    public AvroColumnDecoder(DecoderColumnHandle columnHandle)
+    public AvroColumnDecoder(DecoderColumnHandle columnHandle, TypeManager typeManager)
     {
         try {
             requireNonNull(columnHandle, "columnHandle is null");
@@ -71,6 +74,7 @@ public class AvroColumnDecoder
             checkArgument(columnHandle.getMapping() != null, "mapping not defined for column '%s'", columnName);
 
             checkArgument(isSupportedType(columnType), "Unsupported column type '%s' for column '%s'", columnType, columnName);
+            this.avroSchemaConverter = new AvroSchemaConverter(requireNonNull(typeManager, "typeManager is null"));
         }
         catch (IllegalArgumentException e) {
             throw new PrestoException(GENERIC_USER_ERROR, e);
@@ -93,6 +97,11 @@ public class AvroColumnDecoder
             checkArgument(typeParameters.size() == 2, "expecting exactly two type parameters for map");
             checkArgument(typeParameters.get(0) instanceof VarcharType, "Unsupported column type '%s' for map key", typeParameters.get(0));
             return isSupportedPrimitive(type.getTypeParameters().get(1));
+        }
+        if (type.getTypeSignature().getBase().equalsIgnoreCase(ROW)) {
+            List<Type> typeParameters = type.getTypeParameters();
+            return !typeParameters.stream()
+                    .anyMatch(parameter -> !isSupportedType(parameter));
         }
         return false;
     }
@@ -208,9 +217,22 @@ public class AvroColumnDecoder
                 return serializeList(builder, value, type, columnName);
             case MAP:
                 return serializeMap(builder, value, type, columnName);
+            case ROW:
+                return serializeStruct(builder, value, type, columnName);
             default:
                 serializeGeneric(builder, value, type, columnName);
         }
+        return null;
+    }
+
+    private static Block serializeStruct(BlockBuilder blockBuilder, Object value, Type type, String columnName)
+    {
+        if (value == null) {
+            requireNonNull(blockBuilder, "parent blockBuilder is null").appendNull();
+            return blockBuilder.build();
+        }
+        List<Type> typeParameters = type.getTypeParameters();
+
         return null;
     }
 

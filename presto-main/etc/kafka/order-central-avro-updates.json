@@ -1,0 +1,11 @@
+{
+  "tableName": "order_central_avro_updates",
+  "schemaName": "default",
+  "topicName": "order-central-avro-updates",
+  "message": {
+    "dataFormat": "avro",
+    "dataSchema": "http://10.252.27.244:8081/subjects/order-central-avro-updates-value/versions/latest",
+    "fields": [
+    ]
+  }
+}

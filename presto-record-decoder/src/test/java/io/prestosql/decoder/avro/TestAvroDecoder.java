@@ -31,6 +31,7 @@ import io.prestosql.spi.type.DoubleType;
 import io.prestosql.spi.type.IntegerType;
 import io.prestosql.spi.type.RealType;
 import io.prestosql.spi.type.SmallintType;
+import io.prestosql.spi.type.TestingTypeManager;
 import io.prestosql.spi.type.TinyintType;
 import io.prestosql.spi.type.Type;
 import io.prestosql.spi.type.VarbinaryType;
@@ -74,7 +75,7 @@ import static org.testng.Assert.assertTrue;
 public class TestAvroDecoder
 {
     private static final String DATA_SCHEMA = "dataSchema";
-    private static final AvroRowDecoderFactory DECODER_FACTORY = new AvroRowDecoderFactory();
+    private static final AvroRowDecoderFactory DECODER_FACTORY = new AvroRowDecoderFactory(new TestingTypeManager());
 
     private static final Metadata METADATA = createTestMetadataManager();
     private static final Type VACHAR_MAP_TYPE = METADATA.getType(parseTypeSignature("map<varchar,varchar>"));

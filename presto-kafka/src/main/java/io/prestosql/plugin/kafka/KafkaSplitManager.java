@@ -13,6 +13,8 @@
  */
 package io.prestosql.plugin.kafka;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableSet;
@@ -146,11 +148,14 @@ public class KafkaSplitManager
                     // try again before failing
                     inputStream = new FileInputStream(dataSchemaLocation);
                 }
+                ObjectMapper mapper = new ObjectMapper();
+                JsonNode node = mapper.readTree(inputStream);
+                return node.get("schema").asText();
             }
             else {
                 inputStream = new FileInputStream(dataSchemaLocation);
+                return CharStreams.toString(new InputStreamReader(inputStream, UTF_8));
             }
-            return CharStreams.toString(new InputStreamReader(inputStream, UTF_8));
         }
         catch (IOException e) {
             throw new PrestoException(GENERIC_INTERNAL_ERROR, "Could not parse the Avro schema at: " + dataSchemaLocation, e);
@@ -171,7 +176,7 @@ public class KafkaSplitManager
         }
     }
 
-    private static boolean isURI(String location)
+    static boolean isURI(String location)
     {
         try {
             URI.create(location);

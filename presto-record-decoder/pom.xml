@@ -110,5 +110,12 @@
             <artifactId>presto-main</artifactId>
             <scope>test</scope>
         </dependency>
+
+        <dependency>
+            <groupId>io.prestosql</groupId>
+            <artifactId>presto-spi</artifactId>
+            <scope>test</scope>
+            <type>test-jar</type>
+        </dependency>
     </dependencies>
 </project>

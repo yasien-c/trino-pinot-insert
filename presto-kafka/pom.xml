@@ -150,6 +150,17 @@
             <scope>provided</scope>
         </dependency>
 
+        <dependency>
+            <groupId>com.squareup.okhttp3</groupId>
+            <artifactId>okhttp</artifactId>
+        </dependency>
+
+        <dependency>
+            <groupId>org.apache.avro</groupId>
+            <artifactId>avro</artifactId>
+            <version>1.8.1</version>
+        </dependency>
+
         <!-- used by tests but also needed transitively -->
         <dependency>
             <groupId>io.airlift</groupId>

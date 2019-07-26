@@ -26,6 +26,7 @@ import javax.validation.constraints.NotNull;
 import javax.validation.constraints.Size;
 
 import java.io.File;
+import java.util.Optional;
 import java.util.Set;
 
 import static com.google.common.collect.Iterables.transform;
@@ -58,6 +59,11 @@ public class KafkaConnectorConfig
      * Set of tables known to this connector. For each table, a description file may be present in the catalog folder which describes columns for the given topic.
      */
     private Set<String> tableNames = ImmutableSet.of();
+
+    /**
+     * URL of confluent schema registry
+     */
+    private Optional<String> schemaRegistry = Optional.empty();
 
     /**
      * Folder holding the JSON description files for Kafka topics.
@@ -155,6 +161,18 @@ public class KafkaConnectorConfig
     public KafkaConnectorConfig setHideInternalColumns(boolean hideInternalColumns)
     {
         this.hideInternalColumns = hideInternalColumns;
+        return this;
+    }
+
+    public Optional<String> getSchemaRegistry()
+    {
+        return schemaRegistry;
+    }
+
+    @Config("kafka.schema-registry")
+    public KafkaConnectorConfig setSchemaRegistry(String schemaRegistry)
+    {
+        this.schemaRegistry = Optional.ofNullable(schemaRegistry);
         return this;
     }
 
