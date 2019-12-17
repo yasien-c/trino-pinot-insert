@@ -54,9 +54,17 @@ public final class PinotQueryBuilder
     {
         requireNonNull(tableHandle, "tableHandle is null");
         StringBuilder pqlBuilder = new StringBuilder();
-        List<String> columnNames = columnHandles.stream()
+        List<String> columnNames;
+        if (columnHandles.isEmpty()) {
+            // This occurs when the query is SELECT COUNT(*) FROM pinotTable ...
+            columnNames = ImmutableList.of("*");
+        }
+        else {
+            columnNames = columnHandles.stream()
                 .map(PinotColumnHandle::getColumnName)
                 .collect(toImmutableList());
+        }
+
         pqlBuilder.append("SELECT ");
         pqlBuilder.append(String.join(", ", columnNames))
                 .append(" FROM ")
