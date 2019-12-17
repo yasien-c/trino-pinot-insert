@@ -35,6 +35,8 @@ import java.util.Set;
 
 import static com.google.common.collect.ImmutableList.toImmutableList;
 import static java.lang.String.format;
+import static java.util.Locale.ENGLISH;
+import static java.util.Objects.requireNonNull;
 
 public final class DynamicTableBuilder
 {
@@ -43,6 +45,8 @@ public final class DynamicTableBuilder
     private static final String WILDCARD = "*";
     public static final String STAR = "star";
     public static final Set<String> DOUBLE_AGGREGATIONS = ImmutableSet.of("count", "distinctcount", "distinctcounthll");
+    public static final String OFFLINE_SUFFIX = "_OFFLINE";
+    public static final String REALTIME_SUFFIX = "_REALTIME";
 
     private DynamicTableBuilder()
     {
@@ -50,9 +54,12 @@ public final class DynamicTableBuilder
 
     public static DynamicTable buildFromPql(PinotMetadata pinotMetadata, SchemaTableName schemaTableName)
     {
+        requireNonNull(pinotMetadata, "pinotMetadata is null");
+        requireNonNull(schemaTableName, "schemaTableName is null");
         String pql = schemaTableName.getTableName();
         BrokerRequest request = REQUEST_COMPILER.compileToBrokerRequest(pql);
-        String pinotTableName = request.getQuerySource().getTableName();
+        String pinotTableName = stripSuffix(request.getQuerySource().getTableName());
+        Optional<String> suffix = getSuffix(request.getQuerySource().getTableName());
         PinotTable pinotTable = pinotMetadata.getPinotTable(pinotTableName);
         if (pinotTable == null) {
             throw new TableNotFoundException(schemaTableName);
@@ -118,7 +125,7 @@ public final class DynamicTableBuilder
             }
         }
 
-        return new DynamicTable(pinotTableName, selectionColumns, groupByColumns, filter, aggregationExpressionBuilder.build(), orderBy, getTopNOrLimit(request), getOffset(request), pql);
+        return new DynamicTable(pinotTableName, suffix, selectionColumns, groupByColumns, filter, aggregationExpressionBuilder.build(), orderBy, getTopNOrLimit(request), getOffset(request), pql);
     }
 
     private static List<String> resolvePinotColumns(SchemaTableName schemaTableName, List<String> prestoColumnNames, Map<String, ColumnHandle> columnHandles)
@@ -167,6 +174,34 @@ public final class DynamicTableBuilder
         }
         else {
             return OptionalLong.empty();
+        }
+    }
+
+    private static String stripSuffix(String tableName)
+    {
+        requireNonNull(tableName, "tableName is null");
+        if (tableName.toUpperCase(ENGLISH).endsWith(OFFLINE_SUFFIX)) {
+            return tableName.substring(0, tableName.length() - OFFLINE_SUFFIX.length());
+        }
+        else if (tableName.toUpperCase(ENGLISH).endsWith(REALTIME_SUFFIX)) {
+            return tableName.substring(0, tableName.length() - REALTIME_SUFFIX.length());
+        }
+        else {
+            return tableName;
+        }
+    }
+
+    private static Optional<String> getSuffix(String tableName)
+    {
+        requireNonNull(tableName, "tableName is null");
+        if (tableName.toUpperCase(ENGLISH).endsWith(OFFLINE_SUFFIX)) {
+            return Optional.of(OFFLINE_SUFFIX);
+        }
+        else if (tableName.toUpperCase(ENGLISH).endsWith(REALTIME_SUFFIX)) {
+            return Optional.of(REALTIME_SUFFIX);
+        }
+        else {
+            return Optional.empty();
         }
     }
 }

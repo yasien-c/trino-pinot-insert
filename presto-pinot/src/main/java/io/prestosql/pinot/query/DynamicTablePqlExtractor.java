@@ -45,6 +45,7 @@ public final class DynamicTablePqlExtractor
                 .collect(joining(", ")));
         builder.append(" from ");
         builder.append(table.getTableName());
+        builder.append(table.getSuffix().orElse(""));
 
         Optional<String> filter = getFilter(table.getFilter(), tupleDomain, columnHandles);
         if (filter.isPresent()) {

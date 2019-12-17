@@ -23,6 +23,7 @@ import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.Executors;
 
+import static io.prestosql.pinot.TestPinotBrokerPageSource.TEST_TABLE;
 import static org.testng.Assert.assertEquals;
 
 public class TestPinotMetadata
@@ -35,7 +36,12 @@ public class TestPinotMetadata
     {
         ConnectorSession session = TestPinotSplitManager.createSessionWithNumSplits(1, false, pinotConfig);
         List<SchemaTableName> schemaTableNames = metadata.listTables(session, Optional.empty());
-        assertEquals(ImmutableSet.copyOf(schemaTableNames), ImmutableSet.of(new SchemaTableName("default", TestPinotSplitManager.realtimeOnlyTable.getTableName()), new SchemaTableName("default", TestPinotSplitManager.hybridTable.getTableName())));
+        assertEquals(ImmutableSet.copyOf(schemaTableNames),
+                ImmutableSet.builder()
+                        .add(new SchemaTableName("default", TestPinotSplitManager.realtimeOnlyTable.getTableName()))
+                        .add(new SchemaTableName("default", TestPinotSplitManager.hybridTable.getTableName()))
+                        .add(new SchemaTableName("default", TEST_TABLE))
+                        .build());
         List<String> schemas = metadata.listSchemaNames(session);
         assertEquals(ImmutableList.copyOf(schemas), ImmutableList.of("default"));
         PinotTableHandle withWeirdSchema = metadata.getTableHandle(session, new SchemaTableName("foo", TestPinotSplitManager.realtimeOnlyTable.getTableName()));

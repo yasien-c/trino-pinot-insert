@@ -51,6 +51,7 @@ import static org.testng.Assert.assertTrue;
 public class TestPinotBrokerPageSource
         extends TestPinotQueryBase
 {
+    public static final String TEST_TABLE = "airlineStats";
     private final ObjectMapper objectMapper = new ObjectMapperProvider().get();
 
     private static class PqlParsedInfo

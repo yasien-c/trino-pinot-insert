@@ -29,6 +29,8 @@ import org.testng.annotations.Test;
 import java.util.List;
 
 import static io.prestosql.pinot.PinotColumnHandle.PinotColumnType.REGULAR;
+import static io.prestosql.pinot.query.DynamicTableBuilder.OFFLINE_SUFFIX;
+import static io.prestosql.pinot.query.DynamicTableBuilder.REALTIME_SUFFIX;
 import static io.prestosql.pinot.query.DynamicTableBuilder.buildFromPql;
 import static io.prestosql.pinot.query.DynamicTablePqlExtractor.extractPql;
 import static io.prestosql.spi.type.VarcharType.VARCHAR;
@@ -121,5 +123,29 @@ public class TestDynamicTable
         DynamicTable dynamicTable = buildFromPql(pinotMetadata, new SchemaTableName("default", pql));
         String expectedPql = format("select %s from %s limit 70", getColumnNames(tableName).stream().collect(joining(", ")), tableName.toLowerCase(ENGLISH));
         assertEquals(extractPql(dynamicTable, TupleDomain.all(), ImmutableList.of()), expectedPql);
+    }
+
+    @Test
+    public void testOfflineDynamicTable()
+    {
+        String tableName = hybridTable.getTableName();
+        String tableNameWithSuffix = tableName + OFFLINE_SUFFIX;
+        String pql = format("select * from %s limit 70", tableNameWithSuffix);
+        DynamicTable dynamicTable = buildFromPql(pinotMetadata, new SchemaTableName("default", pql));
+        String expectedPql = format("select %s from %s limit 70", getColumnNames(tableName).stream().collect(joining(", ")), tableNameWithSuffix);
+        assertEquals(extractPql(dynamicTable, TupleDomain.all(), ImmutableList.of()), expectedPql);
+        assertEquals(dynamicTable.getTableName(), tableName);
+    }
+
+    @Test
+    public void testRealtimeOnlyDynamicTable()
+    {
+        String tableName = hybridTable.getTableName();
+        String tableNameWithSuffix = tableName + REALTIME_SUFFIX;
+        String pql = format("select * from %s limit 70", tableNameWithSuffix);
+        DynamicTable dynamicTable = buildFromPql(pinotMetadata, new SchemaTableName("default", pql));
+        String expectedPql = format("select %s from %s limit 70", getColumnNames(tableName).stream().collect(joining(", ")), tableNameWithSuffix);
+        assertEquals(extractPql(dynamicTable, TupleDomain.all(), ImmutableList.of()), expectedPql);
+        assertEquals(dynamicTable.getTableName(), tableName);
     }
 }

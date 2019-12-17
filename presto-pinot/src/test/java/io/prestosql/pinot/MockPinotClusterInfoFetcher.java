@@ -25,6 +25,7 @@ import static io.prestosql.pinot.MetadataUtil.BROKERS_FOR_TABLE_JSON_CODEC;
 import static io.prestosql.pinot.MetadataUtil.ROUTING_TABLES_JSON_CODEC;
 import static io.prestosql.pinot.MetadataUtil.TABLES_JSON_CODEC;
 import static io.prestosql.pinot.MetadataUtil.TIME_BOUNDARY_JSON_CODEC;
+import static io.prestosql.pinot.TestPinotBrokerPageSource.TEST_TABLE;
 
 public class MockPinotClusterInfoFetcher
         extends PinotClusterInfoFetcher
@@ -44,7 +45,7 @@ public class MockPinotClusterInfoFetcher
     @Override
     public List<String> getAllTables()
     {
-        return ImmutableList.of(TestPinotSplitManager.realtimeOnlyTable.getTableName(), TestPinotSplitManager.hybridTable.getTableName());
+        return ImmutableList.of(TestPinotSplitManager.realtimeOnlyTable.getTableName(), TestPinotSplitManager.hybridTable.getTableName(), TEST_TABLE);
     }
 
     @Override

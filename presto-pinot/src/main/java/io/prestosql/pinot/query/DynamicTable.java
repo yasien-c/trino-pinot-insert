@@ -28,6 +28,7 @@ import static java.util.Objects.requireNonNull;
 public final class DynamicTable
 {
     private final String tableName;
+    private final Optional<String> suffix;
     private final List<String> selections;
     private final List<String> groupingColumns;
     private final List<AggregationExpression> aggregateColumns;
@@ -40,6 +41,7 @@ public final class DynamicTable
     @JsonCreator
     public DynamicTable(
             @JsonProperty("tableName") String tableName,
+            @JsonProperty("suffix") Optional<String> suffix,
             @JsonProperty("selections") List<String> selections,
             @JsonProperty("groupingColumns") List<String> groupingColumns,
             @JsonProperty("filter") Optional<String> filter,
@@ -50,6 +52,7 @@ public final class DynamicTable
             @JsonProperty("query") String query)
     {
         this.tableName = requireNonNull(tableName, "table is null");
+        this.suffix = requireNonNull(suffix, "suffix is null");
         this.selections = ImmutableList.copyOf(requireNonNull(selections, "selections is null"));
         this.groupingColumns = ImmutableList.copyOf(requireNonNull(groupingColumns, "groupingColumns is null"));
         this.filter = requireNonNull(filter, "filter is null");
@@ -64,6 +67,12 @@ public final class DynamicTable
     public String getTableName()
     {
         return tableName;
+    }
+
+    @JsonProperty
+    public Optional<String> getSuffix()
+    {
+        return suffix;
     }
 
     @JsonProperty

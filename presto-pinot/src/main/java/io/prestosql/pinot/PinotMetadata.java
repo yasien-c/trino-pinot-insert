@@ -107,8 +107,7 @@ public class PinotMetadata
             DynamicTable dynamicTable = DynamicTableBuilder.buildFromPql(this, tableName);
             return new PinotTableHandle(tableName.getSchemaName(), dynamicTable.getTableName(), TupleDomain.all(), OptionalLong.empty(), Optional.of(dynamicTable));
         }
-        String pinotTableName = getPinotTableNameFromPrestoTableName(tableName.getTableName());
-        return new PinotTableHandle(tableName.getSchemaName(), pinotTableName);
+        return new PinotTableHandle(tableName.getSchemaName(), tableName.getTableName());
     }
 
     @Override
@@ -156,8 +155,7 @@ public class PinotMetadata
         if (pinotTableHandle.getQuery().isPresent()) {
             return getDynamicTableColumnHandles(pinotTableHandle);
         }
-        String pinotTableName = getPinotTableNameFromPrestoTableName(pinotTableHandle.getTableName());
-        PinotTable table = getPinotTable(pinotTableName);
+        PinotTable table = getPinotTable(pinotTableHandle.getTableName());
         if (table == null) {
             throw new TableNotFoundException(pinotTableHandle.toSchemaTableName());
         }
@@ -211,6 +209,7 @@ public class PinotMetadata
         if (dynamicTable.isPresent() &&
                 (!dynamicTable.get().getLimit().isPresent() || dynamicTable.get().getLimit().getAsLong() > limit)) {
             dynamicTable = Optional.of(new DynamicTable(dynamicTable.get().getTableName(),
+                    dynamicTable.get().getSuffix(),
                     dynamicTable.get().getSelections(),
                     dynamicTable.get().getGroupingColumns(),
                     dynamicTable.get().getFilter(),
@@ -257,7 +256,8 @@ public class PinotMetadata
 
     public PinotTable getPinotTable(String tableName)
     {
-        return new PinotTable(tableName, getFromCache(pinotTableColumnCache, tableName));
+        String pinotTableName = getPinotTableNameFromPrestoTableName(tableName);
+        return new PinotTable(tableName, getFromCache(pinotTableColumnCache, pinotTableName));
     }
 
     private List<String> getPinotTableNames()
@@ -337,8 +337,7 @@ public class PinotMetadata
 
     private ConnectorTableMetadata getTableMetadata(SchemaTableName tableName)
     {
-        String pinotTableName = getPinotTableNameFromPrestoTableName(tableName.getTableName());
-        PinotTable table = getPinotTable(pinotTableName);
+        PinotTable table = getPinotTable(tableName.getTableName());
         if (table == null) {
             return null;
         }
