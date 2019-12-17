@@ -218,8 +218,7 @@ public class TestPinotBrokerPageSource
 
     private PinotBrokerPageSource getPinotBrokerPageSource()
     {
-        PinotTable pinotTable = pinotMetadata.getPinotTable("airlineStats");
-        List<PinotColumnHandle> pinotColumnHandles = pinotTable.getColumnHandles().values().stream()
+        List<PinotColumnHandle> pinotColumnHandles = pinotMetadata.getPinotColumnHandles(TEST_TABLE).values().stream()
                 .map(columnHandle -> (PinotColumnHandle) columnHandle)
                 .collect(toImmutableList());
 

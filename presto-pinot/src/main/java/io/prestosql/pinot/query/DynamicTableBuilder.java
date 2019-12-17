@@ -17,11 +17,9 @@ import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableSet;
 import io.prestosql.pinot.PinotColumnHandle;
 import io.prestosql.pinot.PinotMetadata;
-import io.prestosql.pinot.PinotTable;
 import io.prestosql.spi.connector.ColumnHandle;
 import io.prestosql.spi.connector.ColumnNotFoundException;
 import io.prestosql.spi.connector.SchemaTableName;
-import io.prestosql.spi.connector.TableNotFoundException;
 import org.apache.pinot.common.request.AggregationInfo;
 import org.apache.pinot.common.request.BrokerRequest;
 import org.apache.pinot.common.request.SelectionSort;
@@ -60,12 +58,8 @@ public final class DynamicTableBuilder
         BrokerRequest request = REQUEST_COMPILER.compileToBrokerRequest(pql);
         String pinotTableName = stripSuffix(request.getQuerySource().getTableName());
         Optional<String> suffix = getSuffix(request.getQuerySource().getTableName());
-        PinotTable pinotTable = pinotMetadata.getPinotTable(pinotTableName);
-        if (pinotTable == null) {
-            throw new TableNotFoundException(schemaTableName);
-        }
 
-        Map<String, ColumnHandle> columnHandles = pinotTable.getColumnHandles();
+        Map<String, ColumnHandle> columnHandles = pinotMetadata.getPinotColumnHandles(pinotTableName);
         List<String> selectionColumns = ImmutableList.of();
         List<OrderByExpression> orderBy = ImmutableList.of();
         if (request.getSelections() != null) {

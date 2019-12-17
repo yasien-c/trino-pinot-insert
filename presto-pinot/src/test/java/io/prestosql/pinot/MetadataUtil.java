@@ -14,7 +14,6 @@
 package io.prestosql.pinot;
 
 import com.fasterxml.jackson.databind.DeserializationContext;
-import com.fasterxml.jackson.databind.JsonDeserializer;
 import com.fasterxml.jackson.databind.deser.std.FromStringDeserializer;
 import com.google.common.collect.ImmutableMap;
 import io.airlift.json.JsonCodec;
@@ -23,10 +22,8 @@ import io.airlift.json.ObjectMapperProvider;
 import io.prestosql.spi.type.StandardTypes;
 import io.prestosql.spi.type.Type;
 
-import java.util.List;
 import java.util.Map;
 
-import static io.airlift.json.JsonCodec.listJsonCodec;
 import static io.prestosql.spi.type.BigintType.BIGINT;
 import static io.prestosql.spi.type.BooleanType.BOOLEAN;
 import static io.prestosql.spi.type.DoubleType.DOUBLE;
@@ -37,8 +34,6 @@ import static java.util.Objects.requireNonNull;
 
 public class MetadataUtil
 {
-    public static final JsonCodec<Map<String, List<PinotTable>>> CATALOG_CODEC;
-    public static final JsonCodec<PinotTable> TABLE_CODEC;
     public static final JsonCodec<PinotColumnHandle> COLUMN_CODEC;
     public static final JsonCodec<PinotClusterInfoFetcher.GetTables> TABLES_JSON_CODEC;
     public static final JsonCodec<PinotClusterInfoFetcher.BrokersForTable> BROKERS_FOR_TABLE_JSON_CODEC;
@@ -74,10 +69,8 @@ public class MetadataUtil
 
     static {
         ObjectMapperProvider objectMapperProvider = new ObjectMapperProvider();
-        objectMapperProvider.setJsonDeserializers(ImmutableMap.<Class<?>, JsonDeserializer<?>>of(Type.class, new TestingTypeDeserializer()));
+        objectMapperProvider.setJsonDeserializers(ImmutableMap.of(Type.class, new TestingTypeDeserializer()));
         JsonCodecFactory codecFactory = new JsonCodecFactory(objectMapperProvider);
-        CATALOG_CODEC = codecFactory.mapJsonCodec(String.class, listJsonCodec(PinotTable.class));
-        TABLE_CODEC = codecFactory.jsonCodec(PinotTable.class);
         COLUMN_CODEC = codecFactory.jsonCodec(PinotColumnHandle.class);
         TABLES_JSON_CODEC = codecFactory.jsonCodec(PinotClusterInfoFetcher.GetTables.class);
         BROKERS_FOR_TABLE_JSON_CODEC = codecFactory.jsonCodec(PinotClusterInfoFetcher.BrokersForTable.class);

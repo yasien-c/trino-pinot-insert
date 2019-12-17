@@ -37,7 +37,6 @@ import static io.airlift.concurrent.Threads.threadsNamed;
 import static io.airlift.configuration.ConfigBinder.configBinder;
 import static io.airlift.http.client.HttpClientBinder.httpClientBinder;
 import static io.airlift.json.JsonBinder.jsonBinder;
-import static io.airlift.json.JsonCodec.listJsonCodec;
 import static io.airlift.json.JsonCodecBinder.jsonCodecBinder;
 import static io.airlift.units.DataSize.Unit.MEGABYTE;
 import static java.lang.management.ManagementFactory.getPlatformMBeanServer;
@@ -88,7 +87,6 @@ public class PinotModule
                 });
 
         jsonBinder(binder).addDeserializerBinding(Type.class).to(TypeDeserializer.class);
-        jsonCodecBinder(binder).bindMapJsonCodec(String.class, listJsonCodec(PinotTable.class));
         PinotClusterInfoFetcher.addJsonBinders(jsonCodecBinder(binder));
         binder.bind(MBeanServer.class).toInstance(new RebindSafeMBeanServer(getPlatformMBeanServer()));
         binder.bind(TypeManager.class).toInstance(typeManager);

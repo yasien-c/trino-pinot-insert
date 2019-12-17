@@ -13,6 +13,7 @@
  */
 package io.prestosql.pinot;
 
+import com.google.common.annotations.VisibleForTesting;
 import com.google.common.cache.CacheBuilder;
 import com.google.common.cache.CacheLoader;
 import com.google.common.cache.LoadingCache;
@@ -50,6 +51,7 @@ import java.util.concurrent.TimeUnit;
 
 import static com.google.common.base.Preconditions.checkState;
 import static com.google.common.cache.CacheLoader.asyncReloading;
+import static com.google.common.collect.ImmutableList.toImmutableList;
 import static io.prestosql.pinot.PinotColumn.getPinotColumnsForPinotSchema;
 import static io.prestosql.pinot.PinotColumnHandle.PinotColumnType.REGULAR;
 import static io.prestosql.pinot.query.DynamicTableBuilder.DOUBLE_AGGREGATIONS;
@@ -61,6 +63,7 @@ public class PinotMetadata
         implements ConnectorMetadata
 {
     private static final Object ALL_TABLES_CACHE_KEY = new Object();
+    private static final String SCHEMA_NAME = "default";
 
     private final LoadingCache<String, List<PinotColumn>> pinotTableColumnCache;
     private final LoadingCache<Object, List<String>> allTablesCache;
@@ -97,7 +100,7 @@ public class PinotMetadata
     @Override
     public List<String> listSchemaNames(ConnectorSession session)
     {
-        return ImmutableList.of("default");
+        return ImmutableList.of(SCHEMA_NAME);
     }
 
     @Override
@@ -143,7 +146,7 @@ public class PinotMetadata
     {
         ImmutableList.Builder<SchemaTableName> builder = ImmutableList.builder();
         for (String table : getPinotTableNames()) {
-            builder.add(new SchemaTableName("default", table));
+            builder.add(new SchemaTableName(SCHEMA_NAME, table));
         }
         return builder.build();
     }
@@ -155,11 +158,18 @@ public class PinotMetadata
         if (pinotTableHandle.getQuery().isPresent()) {
             return getDynamicTableColumnHandles(pinotTableHandle);
         }
-        PinotTable table = getPinotTable(pinotTableHandle.getTableName());
-        if (table == null) {
-            throw new TableNotFoundException(pinotTableHandle.toSchemaTableName());
+        return getPinotColumnHandles(pinotTableHandle.getTableName());
+    }
+
+    public Map<String, ColumnHandle> getPinotColumnHandles(String tableName)
+    {
+        ImmutableMap.Builder<String, ColumnHandle> columnHandlesBuilder = ImmutableMap.builder();
+        for (ColumnMetadata columnMetadata : getColumnsMetadata(tableName)) {
+            PinotColumnMetadata pinotColumnMetadata = (PinotColumnMetadata) columnMetadata;
+            columnHandlesBuilder.put(pinotColumnMetadata.getName(),
+                    new PinotColumnHandle(pinotColumnMetadata.getPinotName(), pinotColumnMetadata.getType(), REGULAR));
         }
-        return table.getColumnHandles();
+        return columnHandlesBuilder.build();
     }
 
     @Override
@@ -254,10 +264,11 @@ public class PinotMetadata
         return false;
     }
 
-    public PinotTable getPinotTable(String tableName)
+    @VisibleForTesting
+    public List<PinotColumn> getPinotColumns(String tableName)
     {
         String pinotTableName = getPinotTableNameFromPrestoTableName(tableName);
-        return new PinotTable(tableName, getFromCache(pinotTableColumnCache, pinotTableName));
+        return getFromCache(pinotTableColumnCache, pinotTableName);
     }
 
     private List<String> getPinotTableNames()
@@ -282,12 +293,17 @@ public class PinotMetadata
     private String getPinotTableNameFromPrestoTableName(String prestoTableName)
     {
         List<String> allTables = getPinotTableNames();
-        for (String pinotTableName : allTables) {
-            if (prestoTableName.equalsIgnoreCase(pinotTableName)) {
-                return pinotTableName;
+        String pinotTableName = null;
+        for (String candidate : allTables) {
+            if (prestoTableName.equalsIgnoreCase(candidate)) {
+                pinotTableName = candidate;
+                break;
             }
         }
-        throw new PinotException(PinotErrorCode.PINOT_UNCLASSIFIED_ERROR, Optional.empty(), "Unable to find the presto table " + prestoTableName + " in " + allTables);
+        if (pinotTableName == null) {
+            throw new TableNotFoundException(new SchemaTableName(SCHEMA_NAME, prestoTableName));
+        }
+        return pinotTableName;
     }
 
     private Map<String, ColumnHandle> getDynamicTableColumnHandles(PinotTableHandle pinotTableHandle)
@@ -295,12 +311,8 @@ public class PinotMetadata
         checkState(pinotTableHandle.getQuery().isPresent(), "dynamic table not present");
         String schemaName = pinotTableHandle.getSchemaName();
         DynamicTable dynamicTable = pinotTableHandle.getQuery().get();
-        PinotTable table = getPinotTable(dynamicTable.getTableName());
-        if (table == null) {
-            throw new TableNotFoundException(new SchemaTableName(schemaName, dynamicTable.getTableName()));
-        }
 
-        Map<String, ColumnHandle> columnHandles = table.getColumnHandles();
+        Map<String, ColumnHandle> columnHandles = getPinotColumnHandles(dynamicTable.getTableName());
         ImmutableMap.Builder<String, ColumnHandle> columnHandlesBuilder = ImmutableMap.builder();
         for (String columnName : dynamicTable.getSelections()) {
             PinotColumnHandle columnHandle = (PinotColumnHandle) columnHandles.get(columnName.toLowerCase(ENGLISH));
@@ -337,11 +349,15 @@ public class PinotMetadata
 
     private ConnectorTableMetadata getTableMetadata(SchemaTableName tableName)
     {
-        PinotTable table = getPinotTable(tableName.getTableName());
-        if (table == null) {
-            return null;
-        }
-        return new ConnectorTableMetadata(tableName, table.getColumnsMetadata());
+        return new ConnectorTableMetadata(tableName, getColumnsMetadata(tableName.getTableName()));
+    }
+
+    private List<ColumnMetadata> getColumnsMetadata(String tableName)
+    {
+        List<PinotColumn> columns = getPinotColumns(tableName);
+        return columns.stream()
+                .map(c -> new PinotColumnMetadata(c.getName(), c.getType()))
+                .collect(toImmutableList());
     }
 
     private List<SchemaTableName> listTables(ConnectorSession session, SchemaTablePrefix prefix)
