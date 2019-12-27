@@ -28,14 +28,12 @@ import io.prestosql.spi.type.BigintType;
 import io.prestosql.spi.type.BooleanType;
 import io.prestosql.spi.type.DecimalType;
 import io.prestosql.spi.type.DoubleType;
-import io.prestosql.spi.type.IntegerType;
-import io.prestosql.spi.type.SmallintType;
-import io.prestosql.spi.type.TinyintType;
 import io.prestosql.spi.type.Type;
 import io.prestosql.spi.type.VarbinaryType;
 import org.apache.avro.AvroTypeException;
 import org.apache.avro.Schema;
 import org.apache.avro.file.DataFileWriter;
+import org.apache.avro.generic.GenericArray;
 import org.apache.avro.generic.GenericData;
 import org.apache.avro.generic.GenericDatumWriter;
 import org.apache.avro.generic.GenericRecord;
@@ -449,6 +447,35 @@ public class TestAvroDecoder
     }
 
     @Test
+    public void testNestedArrayDecodedAsArray()
+            throws Exception
+    {
+        DecoderTestColumnHandle row = new DecoderTestColumnHandle(0, "row", new ArrayType(new ArrayType(BIGINT)), "array_field", null, null, false, false, false);
+        String columnType = "{\n" +
+                "  \"type\" : \"array\",\n" +
+                "  \"items\" : {\n" +
+                "    \"type\" : \"array\",\n" +
+                "    \"items\" : \"long\"\n" +
+                "  }\n" +
+                "}";
+        Schema schema = new Schema.Parser().parse(columnType);
+        GenericArray<Long> subList1 = new GenericData.Array<>(schema.getElementType(), ImmutableList.of(12L, 15L, 17L));
+        GenericArray<Long> subList2 = new GenericData.Array<>(schema.getElementType(), ImmutableList.of(22L, 25L, 27L, 29L));
+        GenericArray<GenericArray<Long>> list = new GenericData.Array<>(schema, ImmutableList.of(subList1, subList2));
+        Map<DecoderColumnHandle, FieldValueProvider> decodedRow = buildAndDecodeColumn(row, "array_field", columnType, list);
+        Block block = getBlock(decodedRow, row);
+        assertEquals(block.getPositionCount(), list.size());
+        assertEquals(block.getObject(0, Block.class).getPositionCount(), subList1.size());
+        assertEquals(block.getObject(1, Block.class).getPositionCount(), subList2.size());
+        for (int i = 0; i < subList1.size(); i++) {
+            assertEquals(block.getObject(0, Block.class).getLong(i, 0), (long) subList1.get(i));
+        }
+        for (int i = 0; i < subList2.size(); i++) {
+            assertEquals(block.getObject(1, Block.class).getLong(i, 0), (long) subList2.get(i));
+        }
+    }
+
+    @Test
     public void testArrayWithNulls()
             throws Exception
     {
@@ -456,7 +483,7 @@ public class TestAvroDecoder
 
         List<Long> values = new ArrayList<>();
         values.add(null);
-        Map<DecoderColumnHandle, FieldValueProvider> decodedRow = buildAndDecodeColumn(row, "array_field", "{\"type\": \"array\", \"items\": [\"null\"]}", values);
+        Map<DecoderColumnHandle, FieldValueProvider> decodedRow = buildAndDecodeColumn(row, "array_field", "{\"type\": \"array\", \"items\": [\"long\", \"null\"]}", values);
         checkArrayItemIsNull(decodedRow, row, new long[] {0});
     }
 
@@ -564,13 +591,7 @@ public class TestAvroDecoder
         singleColumnDecoder(DOUBLE_MAP_TYPE);
 
         // some unsupported types
-        assertUnsupportedColumnTypeException(() -> singleColumnDecoder(REAL));
-        assertUnsupportedColumnTypeException(() -> singleColumnDecoder(IntegerType.INTEGER));
-        assertUnsupportedColumnTypeException(() -> singleColumnDecoder(SmallintType.SMALLINT));
-        assertUnsupportedColumnTypeException(() -> singleColumnDecoder(TinyintType.TINYINT));
         assertUnsupportedColumnTypeException(() -> singleColumnDecoder(DecimalType.createDecimalType(10, 4)));
-        assertUnsupportedColumnTypeException(() -> singleColumnDecoder(new ArrayType(REAL)));
-        assertUnsupportedColumnTypeException(() -> singleColumnDecoder(REAL_MAP_TYPE));
     }
 
     private void assertUnsupportedColumnTypeException(ThrowableAssert.ThrowingCallable callable)

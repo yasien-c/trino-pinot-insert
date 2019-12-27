@@ -26,18 +26,26 @@ import io.prestosql.spi.type.ArrayType;
 import io.prestosql.spi.type.BigintType;
 import io.prestosql.spi.type.BooleanType;
 import io.prestosql.spi.type.DoubleType;
+import io.prestosql.spi.type.IntegerType;
 import io.prestosql.spi.type.MapType;
+import io.prestosql.spi.type.RealType;
+import io.prestosql.spi.type.RowType;
+import io.prestosql.spi.type.RowType.Field;
+import io.prestosql.spi.type.SmallintType;
+import io.prestosql.spi.type.TinyintType;
 import io.prestosql.spi.type.Type;
 import io.prestosql.spi.type.VarbinaryType;
 import io.prestosql.spi.type.VarcharType;
+import org.apache.avro.generic.GenericEnumSymbol;
+import org.apache.avro.generic.GenericFixed;
 import org.apache.avro.generic.GenericRecord;
-import org.apache.avro.util.Utf8;
 
 import java.nio.ByteBuffer;
 import java.util.List;
 import java.util.Map;
 
 import static com.google.common.base.Preconditions.checkArgument;
+import static com.google.common.base.Preconditions.checkState;
 import static io.airlift.slice.Slices.utf8Slice;
 import static io.prestosql.decoder.DecoderErrorCode.DECODER_CONVERSION_NOT_SUPPORTED;
 import static io.prestosql.spi.StandardErrorCode.GENERIC_USER_ERROR;
@@ -80,14 +88,23 @@ public class AvroColumnDecoder
 
         if (type instanceof ArrayType) {
             checkArgument(type.getTypeParameters().size() == 1, "expecting exactly one type parameter for array");
-            return isSupportedPrimitive(type.getTypeParameters().get(0));
+            return isSupportedType(type.getTypeParameters().get(0));
         }
 
         if (type instanceof MapType) {
             List<Type> typeParameters = type.getTypeParameters();
             checkArgument(typeParameters.size() == 2, "expecting exactly two type parameters for map");
             checkArgument(typeParameters.get(0) instanceof VarcharType, "Unsupported column type '%s' for map key", typeParameters.get(0));
-            return isSupportedPrimitive(type.getTypeParameters().get(1));
+            return isSupportedType(type.getTypeParameters().get(1));
+        }
+
+        if (type instanceof RowType) {
+            for (Type fieldType : type.getTypeParameters()) {
+                if (!isSupportedType(fieldType)) {
+                    return false;
+                }
+            }
+            return true;
         }
         return false;
     }
@@ -96,8 +113,12 @@ public class AvroColumnDecoder
     {
         return isVarcharType(type) ||
                 ImmutableList.of(
-                        BigintType.BIGINT,
                         BooleanType.BOOLEAN,
+                        TinyintType.TINYINT,
+                        SmallintType.SMALLINT,
+                        IntegerType.INTEGER,
+                        BigintType.BIGINT,
+                        RealType.REAL,
                         DoubleType.DOUBLE,
                         VarbinaryType.VARBINARY).contains(type);
     }
@@ -182,12 +203,18 @@ public class AvroColumnDecoder
 
     private static Slice getSlice(Object value, Type type, String columnName)
     {
-        if (type instanceof VarcharType && value instanceof Utf8) {
+        if (type instanceof VarcharType && (value instanceof CharSequence || value instanceof GenericEnumSymbol)) {
             return truncateToLength(utf8Slice(value.toString()), type);
         }
 
         if (type instanceof VarbinaryType && value instanceof ByteBuffer) {
-            return Slices.wrappedBuffer((ByteBuffer) value);
+            if (value instanceof ByteBuffer) {
+                return Slices.wrappedBuffer((ByteBuffer) value);
+            }
+            else if (value instanceof GenericFixed) {
+                return Slices.wrappedBuffer(((GenericFixed) value).bytes());
+            }
+
         }
 
         throw new PrestoException(DECODER_CONVERSION_NOT_SUPPORTED, format("cannot decode object of '%s' as '%s' for column '%s'", value.getClass(), type, columnName));
@@ -201,41 +228,36 @@ public class AvroColumnDecoder
         if (type instanceof MapType) {
             return serializeMap(builder, value, type, columnName);
         }
-        serializeGeneric(builder, value, type, columnName);
+        if (type instanceof RowType) {
+            return serializeRow(builder, value, type, columnName);
+        }
+        serializePrimitive(builder, value, type, columnName);
         return null;
     }
 
-    private static Block serializeList(BlockBuilder blockBuilder, Object value, Type type, String columnName)
+    private static Block serializeList(BlockBuilder parentBlockBuilder, Object value, Type type, String columnName)
     {
         if (value == null) {
-            requireNonNull(blockBuilder, "parent blockBuilder is null").appendNull();
-            return blockBuilder.build();
+            checkState(parentBlockBuilder != null, "parent block builder is null");
+            parentBlockBuilder.appendNull();
+            return null;
         }
-
         List<?> list = (List<?>) value;
         List<Type> typeParameters = type.getTypeParameters();
         Type elementType = typeParameters.get(0);
 
-        BlockBuilder currentBlockBuilder;
-        if (blockBuilder != null) {
-            currentBlockBuilder = blockBuilder.beginBlockEntry();
-        }
-        else {
-            currentBlockBuilder = elementType.createBlockBuilder(null, list.size());
-        }
-
+        BlockBuilder blockBuilder = elementType.createBlockBuilder(null, list.size());
         for (Object element : list) {
-            serializeObject(currentBlockBuilder, element, elementType, columnName);
+            serializeObject(blockBuilder, element, elementType, columnName);
         }
-
-        if (blockBuilder != null) {
-            blockBuilder.closeEntry();
+        if (parentBlockBuilder != null) {
+            type.writeObject(parentBlockBuilder, blockBuilder.build());
             return null;
         }
-        return currentBlockBuilder.build();
+        return blockBuilder.build();
     }
 
-    private static void serializeGeneric(BlockBuilder blockBuilder, Object value, Type type, String columnName)
+    private static void serializePrimitive(BlockBuilder blockBuilder, Object value, Type type, String columnName)
     {
         requireNonNull(blockBuilder, "parent blockBuilder is null");
 
@@ -249,13 +271,13 @@ public class AvroColumnDecoder
             return;
         }
 
-        if (type instanceof BigintType) {
-            type.writeLong(blockBuilder, (Long) value);
+        if ((value instanceof Integer || value instanceof Long) && (type instanceof BigintType || type instanceof IntegerType || type instanceof SmallintType || type instanceof TinyintType)) {
+            type.writeLong(blockBuilder, ((Number) value).longValue());
             return;
         }
 
-        if (type instanceof DoubleType) {
-            type.writeDouble(blockBuilder, (Double) value);
+        if (type instanceof DoubleType || type instanceof RealType) {
+            type.writeDouble(blockBuilder, ((Number) value).doubleValue());
             return;
         }
 
@@ -267,11 +289,12 @@ public class AvroColumnDecoder
         throw new PrestoException(DECODER_CONVERSION_NOT_SUPPORTED, format("cannot decode object of '%s' as '%s' for column '%s'", value.getClass(), type, columnName));
     }
 
-    private static Block serializeMap(BlockBuilder blockBuilder, Object value, Type type, String columnName)
+    private static Block serializeMap(BlockBuilder parentBlockBuilder, Object value, Type type, String columnName)
     {
         if (value == null) {
-            requireNonNull(blockBuilder, "parent blockBuilder is null").appendNull();
-            return blockBuilder.build();
+            checkState(parentBlockBuilder != null, "parent block builder is null");
+            parentBlockBuilder.appendNull();
+            return null;
         }
 
         Map<?, ?> map = (Map<?, ?>) value;
@@ -279,26 +302,48 @@ public class AvroColumnDecoder
         Type keyType = typeParameters.get(0);
         Type valueType = typeParameters.get(1);
 
-        BlockBuilder entryBuilder;
-        boolean builderSynthesized = false;
+        BlockBuilder blockBuilder = type.createBlockBuilder(null, 1);
 
-        if (blockBuilder == null) {
-            builderSynthesized = true;
-            blockBuilder = type.createBlockBuilder(null, 1);
-        }
-        entryBuilder = blockBuilder.beginBlockEntry();
-
+        BlockBuilder entryBuilder = blockBuilder.beginBlockEntry();
         for (Map.Entry<?, ?> entry : map.entrySet()) {
             if (entry.getKey() != null) {
                 keyType.writeSlice(entryBuilder, truncateToLength(utf8Slice(entry.getKey().toString()), keyType));
                 serializeObject(entryBuilder, entry.getValue(), valueType, columnName);
             }
         }
-
         blockBuilder.closeEntry();
-        if (builderSynthesized) {
-            return (Block) type.getObject(blockBuilder, 0);
+
+        Block singleMapBlock = blockBuilder.build().getObject(0, Block.class);
+        if (parentBlockBuilder != null) {
+            type.writeObject(parentBlockBuilder, singleMapBlock);
+            return null;
         }
-        return null;
+        return singleMapBlock;
+    }
+
+    private static Block serializeRow(BlockBuilder parentBlockBuilder, Object value, Type type, String columnName)
+    {
+
+        if (value == null) {
+            checkState(parentBlockBuilder != null, "parent block builder is null");
+            parentBlockBuilder.appendNull();
+            return null;
+        }
+
+        BlockBuilder blockBuilder = type.createBlockBuilder(null, 1);
+        BlockBuilder singleRowBuilder = blockBuilder.beginBlockEntry();
+        GenericRecord record = (GenericRecord) value;
+        List<Field> fields = ((RowType) type).getFields();
+        for (Field field : fields) {
+            checkState(field.getName().isPresent(), "field name not found");
+            serializeObject(singleRowBuilder, record.get(field.getName().get()), field.getType(), columnName);
+        }
+        blockBuilder.closeEntry();
+        Block singleRowBlock = blockBuilder.build().getObject(0, Block.class);
+        if (parentBlockBuilder != null) {
+            type.writeObject(parentBlockBuilder, singleRowBlock);
+            return null;
+        }
+        return singleRowBlock;
     }
 }
