@@ -19,10 +19,13 @@ import io.prestosql.decoder.RowDecoder;
 import io.prestosql.spi.PrestoException;
 import org.apache.avro.file.DataFileStream;
 import org.apache.avro.generic.GenericRecord;
+import org.apache.avro.io.BinaryDecoder;
 import org.apache.avro.io.DatumReader;
+import org.apache.avro.io.DecoderFactory;
 
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
+import java.io.UncheckedIOException;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
@@ -31,11 +34,16 @@ import static com.google.common.base.Functions.identity;
 import static com.google.common.collect.ImmutableMap.toImmutableMap;
 import static io.prestosql.spi.StandardErrorCode.GENERIC_INTERNAL_ERROR;
 import static java.util.Objects.requireNonNull;
+import static org.apache.avro.file.DataFileConstants.MAGIC;
 
 public class AvroRowDecoder
         implements RowDecoder
 {
     public static final String NAME = "avro";
+    public static final int HEADER_LENGTH = 1 + Integer.BYTES;
+
+    private static ThreadLocal<BinaryDecoder> reuseDecoder = ThreadLocal.withInitial(() -> null);
+
     private final DatumReader<GenericRecord> avroRecordReader;
     private final Map<DecoderColumnHandle, AvroColumnDecoder> columnDecoders;
 
@@ -55,26 +63,13 @@ public class AvroRowDecoder
     @Override
     public Optional<Map<DecoderColumnHandle, FieldValueProvider>> decodeRow(byte[] data, Map<String, String> dataMap)
     {
-        GenericRecord avroRecord;
-        DataFileStream<GenericRecord> dataFileReader = null;
-        try {
-            // Assumes producer uses DataFileWriter or data comes in this particular format.
-            // TODO: Support other forms for producers
-            dataFileReader = new DataFileStream<>(new ByteArrayInputStream(data), avroRecordReader);
-            if (!dataFileReader.hasNext()) {
-                throw new PrestoException(GENERIC_INTERNAL_ERROR, "No avro record found");
-            }
-            avroRecord = dataFileReader.next();
-            if (dataFileReader.hasNext()) {
-                throw new PrestoException(GENERIC_INTERNAL_ERROR, "Unexpected extra record found");
-            }
+        Optional<GenericRecord> candidate = decodeAvroDataFileFormat(data);
+        if (!candidate.isPresent()) {
+            candidate = decodeAvroSchemaRegistryFormat(data);
         }
-        catch (Exception e) {
-            throw new PrestoException(GENERIC_INTERNAL_ERROR, "Decoding Avro record failed.", e);
-        }
-        finally {
-            closeQuietly(dataFileReader);
-        }
+
+        GenericRecord avroRecord = candidate
+                        .orElseThrow(() -> new PrestoException(GENERIC_INTERNAL_ERROR, "Decoding Avro record failed."));
 
         return Optional.of(columnDecoders.entrySet().stream()
                 .collect(toImmutableMap(
@@ -90,6 +85,71 @@ public class AvroRowDecoder
             }
         }
         catch (IOException ignored) {
+        }
+    }
+
+    private static boolean isAvroDataFileFormat(byte[] data)
+    {
+        if (data.length >= MAGIC.length) {
+            for (int i = 0; i < MAGIC.length; i++) {
+                if (data[i] != MAGIC[i]) {
+                    return false;
+                }
+            }
+            return true;
+        }
+        return false;
+    }
+
+    private static boolean isAvroSchemaRegistryFormat(byte[] data)
+    {
+        if (data.length >= HEADER_LENGTH) {
+            if (data[0] == 0) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private Optional<GenericRecord> decodeAvroDataFileFormat(byte[] data)
+    {
+        if (!isAvroDataFileFormat(data)) {
+            return Optional.empty();
+        }
+        DataFileStream<GenericRecord> dataFileReader = null;
+        try {
+            // Assumes producer uses DataFileWriter or data comes in this particular format.
+            // TODO: Support other forms for producers
+            dataFileReader = new DataFileStream<>(new ByteArrayInputStream(data), avroRecordReader);
+            if (!dataFileReader.hasNext()) {
+                throw new PrestoException(GENERIC_INTERNAL_ERROR, "No avro record found");
+            }
+            GenericRecord avroRecord = dataFileReader.next();
+            if (dataFileReader.hasNext()) {
+                throw new PrestoException(GENERIC_INTERNAL_ERROR, "Unexpected extra record found");
+            }
+            return Optional.of(avroRecord);
+        }
+        catch (Exception e) {
+            throw new PrestoException(GENERIC_INTERNAL_ERROR, "Decoding Avro record failed.", e);
+        }
+        finally {
+            closeQuietly(dataFileReader);
+        }
+    }
+
+    private Optional<GenericRecord> decodeAvroSchemaRegistryFormat(byte[] data)
+    {
+        if (!isAvroSchemaRegistryFormat(data)) {
+            return Optional.empty();
+        }
+        BinaryDecoder decoder = DecoderFactory.get().binaryDecoder(data, HEADER_LENGTH, data.length - HEADER_LENGTH, reuseDecoder.get());
+        reuseDecoder.set(decoder);
+        try {
+            return Optional.of(avroRecordReader.read(null, decoder));
+        }
+        catch (IOException e) {
+            throw new UncheckedIOException(e);
         }
     }
 }
