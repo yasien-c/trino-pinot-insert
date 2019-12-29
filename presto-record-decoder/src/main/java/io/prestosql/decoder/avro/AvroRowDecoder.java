@@ -13,19 +13,26 @@
  */
 package io.prestosql.decoder.avro;
 
+import com.google.common.cache.CacheBuilder;
+import com.google.common.cache.CacheLoader;
+import com.google.common.cache.LoadingCache;
+import io.confluent.kafka.schemaregistry.client.SchemaRegistryClient;
+import io.confluent.kafka.schemaregistry.client.rest.exceptions.RestClientException;
 import io.prestosql.decoder.DecoderColumnHandle;
 import io.prestosql.decoder.FieldValueProvider;
 import io.prestosql.decoder.RowDecoder;
 import io.prestosql.spi.PrestoException;
+import org.apache.avro.Schema;
 import org.apache.avro.file.DataFileStream;
+import org.apache.avro.generic.GenericDatumReader;
 import org.apache.avro.generic.GenericRecord;
 import org.apache.avro.io.BinaryDecoder;
-import org.apache.avro.io.DatumReader;
 import org.apache.avro.io.DecoderFactory;
 
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.io.UncheckedIOException;
+import java.nio.ByteBuffer;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
@@ -44,15 +51,50 @@ public class AvroRowDecoder
 
     private static ThreadLocal<BinaryDecoder> reuseDecoder = ThreadLocal.withInitial(() -> null);
 
-    private final DatumReader<GenericRecord> avroRecordReader;
+    private final Schema targetSchema;
     private final Map<DecoderColumnHandle, AvroColumnDecoder> columnDecoders;
+    private final Optional<SchemaRegistryClient> schemaRegistryClient;
+    private final Optional<LoadingCache<Integer, GenericDatumReader<GenericRecord>>> avroRecordReaderCache;
+    private final GenericDatumReader<GenericRecord> defaultAvroRecordReader;
+    private final ReaderSupplier readerSupplier;
 
-    public AvroRowDecoder(DatumReader<GenericRecord> avroRecordReader, Set<DecoderColumnHandle> columns)
+    public AvroRowDecoder(Schema targetSchema, Set<DecoderColumnHandle> columns, Optional<SchemaRegistryClient> schemaRegistryClient)
     {
-        this.avroRecordReader = requireNonNull(avroRecordReader, "avroRecordReader is null");
+        this.targetSchema = requireNonNull(targetSchema, "targetSchema is null");
         requireNonNull(columns, "columns is null");
         columnDecoders = columns.stream()
                 .collect(toImmutableMap(identity(), this::createColumnDecoder));
+        this.schemaRegistryClient = requireNonNull(schemaRegistryClient, "schemaRegistryClient is null");
+        if (schemaRegistryClient.isPresent()) {
+            avroRecordReaderCache = Optional.of(CacheBuilder.newBuilder()
+                    .maximumSize(1000)
+                    .build(CacheLoader.from(this::lookupReader)));
+        }
+        else {
+            avroRecordReaderCache = Optional.empty();
+        }
+        defaultAvroRecordReader = new GenericDatumReader<>(targetSchema);
+
+        if (schemaRegistryClient.isPresent()) {
+            readerSupplier = schemaId -> avroRecordReaderCache.get().getUnchecked(schemaId);
+        }
+        else {
+            readerSupplier = schemaId -> defaultAvroRecordReader;
+        }
+    }
+
+    private GenericDatumReader<GenericRecord> lookupReader(Integer id)
+    {
+        try {
+            Schema sourceSchema = schemaRegistryClient.get().getById(id);
+            return new GenericDatumReader<>(sourceSchema, targetSchema);
+        }
+        catch (IOException e) {
+            throw new UncheckedIOException(e);
+        }
+        catch (RestClientException e) {
+            throw new RuntimeException(e);
+        }
     }
 
     private AvroColumnDecoder createColumnDecoder(DecoderColumnHandle columnHandle)
@@ -120,7 +162,7 @@ public class AvroRowDecoder
         try {
             // Assumes producer uses DataFileWriter or data comes in this particular format.
             // TODO: Support other forms for producers
-            dataFileReader = new DataFileStream<>(new ByteArrayInputStream(data), avroRecordReader);
+            dataFileReader = new DataFileStream<>(new ByteArrayInputStream(data), defaultAvroRecordReader);
             if (!dataFileReader.hasNext()) {
                 throw new PrestoException(GENERIC_INTERNAL_ERROR, "No avro record found");
             }
@@ -143,6 +185,8 @@ public class AvroRowDecoder
         if (!isAvroSchemaRegistryFormat(data)) {
             return Optional.empty();
         }
+        ByteBuffer buffer = ByteBuffer.wrap(data, 1, Integer.BYTES);
+        GenericDatumReader<GenericRecord> avroRecordReader = readerSupplier.getAvroRecordReader(buffer.getInt());
         BinaryDecoder decoder = DecoderFactory.get().binaryDecoder(data, HEADER_LENGTH, data.length - HEADER_LENGTH, reuseDecoder.get());
         reuseDecoder.set(decoder);
         try {
@@ -151,5 +195,10 @@ public class AvroRowDecoder
         catch (IOException e) {
             throw new UncheckedIOException(e);
         }
+    }
+
+    private interface ReaderSupplier
+    {
+        GenericDatumReader<GenericRecord> getAvroRecordReader(int schemaId);
     }
 }

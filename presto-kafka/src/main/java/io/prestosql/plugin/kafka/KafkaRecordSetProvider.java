@@ -40,12 +40,14 @@ public class KafkaRecordSetProvider
 {
     private DispatchingRowDecoderFactory decoderFactory;
     private final KafkaSimpleConsumerManager consumerManager;
+    private final KafkaConfig config;
 
     @Inject
-    public KafkaRecordSetProvider(DispatchingRowDecoderFactory decoderFactory, KafkaSimpleConsumerManager consumerManager)
+    public KafkaRecordSetProvider(DispatchingRowDecoderFactory decoderFactory, KafkaSimpleConsumerManager consumerManager, KafkaConfig config)
     {
         this.decoderFactory = requireNonNull(decoderFactory, "decoderFactory is null");
         this.consumerManager = requireNonNull(consumerManager, "consumerManager is null");
+        this.config = requireNonNull(config, "config is null");
     }
 
     @Override
@@ -80,6 +82,7 @@ public class KafkaRecordSetProvider
     {
         ImmutableMap.Builder<String, String> parameters = ImmutableMap.builder();
         dataSchema.ifPresent(schema -> parameters.put("dataSchema", schema));
+        config.getSchemaRegistryUrl().ifPresent(schemaRegistryUrl -> parameters.put("schemaRegistryUrl", schemaRegistryUrl));
         return parameters.build();
     }
 }

@@ -13,13 +13,15 @@
  */
 package io.prestosql.decoder.avro;
 
+import io.confluent.kafka.schemaregistry.client.CachedSchemaRegistryClient;
+import io.confluent.kafka.schemaregistry.client.SchemaRegistryClient;
 import io.prestosql.decoder.DecoderColumnHandle;
 import io.prestosql.decoder.RowDecoder;
 import io.prestosql.decoder.RowDecoderFactory;
 import org.apache.avro.Schema;
-import org.apache.avro.generic.GenericDatumReader;
 
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 
 import static java.util.Objects.requireNonNull;
@@ -27,11 +29,20 @@ import static java.util.Objects.requireNonNull;
 public class AvroRowDecoderFactory
         implements RowDecoderFactory
 {
+    private static final String SCHEMA_REGISTRY_KEY = "schemaRegistryUrl";
+
     @Override
     public RowDecoder create(Map<String, String> decoderParams, Set<DecoderColumnHandle> columns)
     {
         String dataSchema = requireNonNull(decoderParams.get("dataSchema"), "dataSchema cannot be null");
         Schema parsedSchema = (new Schema.Parser()).parse(dataSchema);
-        return new AvroRowDecoder(new GenericDatumReader<>(parsedSchema), columns);
+        Optional<SchemaRegistryClient> schemaRegistryClient;
+        if (decoderParams.containsKey(SCHEMA_REGISTRY_KEY)) {
+            schemaRegistryClient = Optional.of(new CachedSchemaRegistryClient(decoderParams.get(SCHEMA_REGISTRY_KEY), 1000));
+        }
+        else {
+            schemaRegistryClient = Optional.empty();
+        }
+        return new AvroRowDecoder(parsedSchema, columns, schemaRegistryClient);
     }
 }
