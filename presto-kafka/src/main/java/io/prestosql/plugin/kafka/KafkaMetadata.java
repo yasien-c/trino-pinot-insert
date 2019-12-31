@@ -16,6 +16,11 @@ package io.prestosql.plugin.kafka;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableSet;
+import io.confluent.kafka.schemaregistry.client.CachedSchemaRegistryClient;
+import io.confluent.kafka.schemaregistry.client.SchemaMetadata;
+import io.confluent.kafka.schemaregistry.client.SchemaRegistryClient;
+import io.confluent.kafka.schemaregistry.client.rest.exceptions.RestClientException;
+import io.prestosql.decoder.avro.AvroSchemaConverter;
 import io.prestosql.decoder.dummy.DummyRowDecoder;
 import io.prestosql.spi.connector.ColumnHandle;
 import io.prestosql.spi.connector.ColumnMetadata;
@@ -27,15 +32,20 @@ import io.prestosql.spi.connector.ConnectorTableProperties;
 import io.prestosql.spi.connector.SchemaTableName;
 import io.prestosql.spi.connector.SchemaTablePrefix;
 import io.prestosql.spi.connector.TableNotFoundException;
+import io.prestosql.spi.type.Type;
+import io.prestosql.spi.type.TypeManager;
+import org.apache.avro.Schema;
 
 import javax.inject.Inject;
 
+import java.io.IOException;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Supplier;
 
+import static com.google.common.base.Preconditions.checkState;
 import static io.prestosql.plugin.kafka.KafkaHandleResolver.convertColumnHandle;
 import static io.prestosql.plugin.kafka.KafkaHandleResolver.convertTableHandle;
 import static java.util.Objects.requireNonNull;
@@ -48,19 +58,30 @@ import static java.util.Objects.requireNonNull;
 public class KafkaMetadata
         implements ConnectorMetadata
 {
+    private static final String AUTO_RESOLVE = "auto";
+    private static final String AVRO = "avro";
+
     private final boolean hideInternalColumns;
     private final Map<SchemaTableName, KafkaTopicDescription> tableDescriptions;
+    private final Optional<SchemaRegistryClient> schemaRegistryClient;
+    private final AvroSchemaConverter avroSchemaConverter;
 
     @Inject
     public KafkaMetadata(
             KafkaConfig kafkaConfig,
-            Supplier<Map<SchemaTableName, KafkaTopicDescription>> kafkaTableDescriptionSupplier)
+            Supplier<Map<SchemaTableName, KafkaTopicDescription>> kafkaTableDescriptionSupplier,
+            TypeManager typeManager)
     {
         requireNonNull(kafkaConfig, "kafkaConfig is null");
         this.hideInternalColumns = kafkaConfig.isHideInternalColumns();
 
         requireNonNull(kafkaTableDescriptionSupplier, "kafkaTableDescriptionSupplier is null");
         this.tableDescriptions = kafkaTableDescriptionSupplier.get();
+
+        requireNonNull(typeManager, "typeManager is null");
+        this.schemaRegistryClient = kafkaConfig.getSchemaRegistryUrl().map(schemaRegistryUrl ->
+                new CachedSchemaRegistryClient(schemaRegistryUrl, 1000));
+        this.avroSchemaConverter = new AvroSchemaConverter(typeManager);
     }
 
     @Override
@@ -132,19 +153,27 @@ public class KafkaMetadata
 
         kafkaTopicDescription.getKey().ifPresent(key -> {
             List<KafkaTopicFieldDescription> fields = key.getFields();
-            if (fields != null) {
-                for (KafkaTopicFieldDescription kafkaTopicFieldDescription : fields) {
-                    columnHandles.put(kafkaTopicFieldDescription.getName(), kafkaTopicFieldDescription.getColumnHandle(true, index.getAndIncrement()));
+            if (fields.isEmpty()) {
+                Optional<KafkaTopicFieldGroup> fieldDescription = getFieldGroup(kafkaTableHandle.toSchemaTableName(), kafkaTopicDescription, true);
+                if (fieldDescription.isPresent()) {
+                    fields = fieldDescription.get().getFields();
                 }
+            }
+            for (KafkaTopicFieldDescription kafkaTopicFieldDescription : fields) {
+                columnHandles.put(kafkaTopicFieldDescription.getName(), kafkaTopicFieldDescription.getColumnHandle(true, index.getAndIncrement()));
             }
         });
 
         kafkaTopicDescription.getMessage().ifPresent(message -> {
             List<KafkaTopicFieldDescription> fields = message.getFields();
-            if (fields != null) {
-                for (KafkaTopicFieldDescription kafkaTopicFieldDescription : fields) {
-                    columnHandles.put(kafkaTopicFieldDescription.getName(), kafkaTopicFieldDescription.getColumnHandle(false, index.getAndIncrement()));
+            if (fields.isEmpty()) {
+                Optional<KafkaTopicFieldGroup> fieldDescription = getFieldGroup(kafkaTableHandle.toSchemaTableName(), kafkaTopicDescription, false);
+                if (fieldDescription.isPresent()) {
+                    fields = fieldDescription.get().getFields();
                 }
+            }
+            for (KafkaTopicFieldDescription kafkaTopicFieldDescription : fields) {
+                columnHandles.put(kafkaTopicFieldDescription.getName(), kafkaTopicFieldDescription.getColumnHandle(false, index.getAndIncrement()));
             }
         });
 
@@ -200,19 +229,27 @@ public class KafkaMetadata
 
         table.getKey().ifPresent(key -> {
             List<KafkaTopicFieldDescription> fields = key.getFields();
-            if (fields != null) {
-                for (KafkaTopicFieldDescription fieldDescription : fields) {
-                    builder.add(fieldDescription.getColumnMetadata());
+            if (fields.isEmpty()) {
+                Optional<KafkaTopicFieldGroup> fieldDescription = getFieldGroup(schemaTableName, table, true);
+                if (fieldDescription.isPresent()) {
+                    fields = fieldDescription.get().getFields();
                 }
+            }
+            for (KafkaTopicFieldDescription fieldDescription : fields) {
+                builder.add(fieldDescription.getColumnMetadata());
             }
         });
 
         table.getMessage().ifPresent(message -> {
             List<KafkaTopicFieldDescription> fields = message.getFields();
-            if (fields != null) {
-                for (KafkaTopicFieldDescription fieldDescription : fields) {
-                    builder.add(fieldDescription.getColumnMetadata());
+            if (fields.isEmpty()) {
+                Optional<KafkaTopicFieldGroup> fieldDescription = getFieldGroup(schemaTableName, table, false);
+                if (fieldDescription.isPresent()) {
+                    fields = fieldDescription.get().getFields();
                 }
+            }
+            for (KafkaTopicFieldDescription fieldDescription : fields) {
+                builder.add(fieldDescription.getColumnMetadata());
             }
         });
 
@@ -221,6 +258,88 @@ public class KafkaMetadata
         }
 
         return new ConnectorTableMetadata(schemaTableName, builder.build());
+    }
+
+    static boolean isAutoResolvable(KafkaTableHandle tableHandle, boolean isKey)
+    {
+        if (isKey) {
+            return tableHandle.getKeyDataSchemaLocation().map(KafkaMetadata::shouldAutoResolveSchema).orElse(false)
+                    && tableHandle.getKeyDataFormat().equalsIgnoreCase(AVRO);
+        }
+        else {
+            return tableHandle.getMessageDataSchemaLocation().map(KafkaMetadata::shouldAutoResolveSchema).orElse(false)
+                    && tableHandle.getMessageDataFormat().equalsIgnoreCase(AVRO);
+        }
+    }
+    private static boolean isAutoResolvable(KafkaTopicDescription topicDescription, boolean isKey)
+    {
+        requireNonNull(topicDescription, "topicDescription is null");
+        if (isKey) {
+            return topicDescription.getKey().isPresent()
+                    && getDataFormat(topicDescription.getKey()).equals(AVRO)
+                    && topicDescription.getKey().get().getDataSchema().map(KafkaMetadata::shouldAutoResolveSchema).orElse(false);
+        }
+        else {
+            return topicDescription.getMessage().isPresent()
+                    && getDataFormat(topicDescription.getMessage()).equals(AVRO)
+                    && topicDescription.getMessage().get().getDataSchema().map(KafkaMetadata::shouldAutoResolveSchema).orElse(false);
+        }
+    }
+
+    static boolean shouldAutoResolveSchema(String dataSchema)
+    {
+        return requireNonNull(dataSchema, "dataSchema is null").equalsIgnoreCase(AUTO_RESOLVE);
+    }
+
+    private Optional<KafkaTopicFieldGroup> getFieldGroup(SchemaTableName schemaTableName, KafkaTopicDescription topicDescription, boolean isKey)
+    {
+        if (!isAutoResolvable(topicDescription, isKey)) {
+            return Optional.empty();
+        }
+        try {
+            SchemaMetadata schemaMetadata = schemaRegistryClient.get().getLatestSchemaMetadata(topicDescription.getTopicName() + getSuffix(isKey));
+            Schema schema = (new Schema.Parser()).parse(schemaMetadata.getSchema());
+            List<Type> types = avroSchemaConverter.convertAvroSchema(schema);
+            List<Schema.Field> avroFields = schema.getFields();
+            checkState(avroFields.size() == types.size(), "incompatible schema");
+            ImmutableList.Builder<KafkaTopicFieldDescription> fieldsBuilder = ImmutableList.builder();
+            for (int i = 0; i < types.size(); i++) {
+                Schema.Field field = avroFields.get(i);
+                fieldsBuilder.add(new KafkaTopicFieldDescription(
+                        field.name(),
+                        types.get(i),
+                        field.name(),
+                        null,
+                        null,
+                        null,
+                        false));
+            }
+            return Optional.of(new KafkaTopicFieldGroup(AVRO, getDataSchema(topicDescription, isKey), fieldsBuilder.build()));
+
+        }
+        catch (IOException | RestClientException e) {
+            throw new TableNotFoundException(schemaTableName);
+        }
+    }
+
+    static String getSuffix(boolean isKey) {
+        if (isKey) {
+            return "-key";
+        }
+        else {
+            return "-value";
+        }
+    }
+
+    private static Optional<String> getDataSchema(KafkaTopicDescription topicDescription, boolean isKey)
+    {
+        requireNonNull(topicDescription, "topicDescription is null");
+        if (isKey) {
+            return topicDescription.getKey().flatMap(KafkaTopicFieldGroup::getDataSchema);
+        }
+        else {
+            return topicDescription.getMessage().flatMap(KafkaTopicFieldGroup::getDataSchema);
+        }
     }
 
     @Override

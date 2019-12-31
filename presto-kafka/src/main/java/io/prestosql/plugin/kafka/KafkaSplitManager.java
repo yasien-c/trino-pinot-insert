@@ -18,6 +18,10 @@ import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableSet;
 import com.google.common.io.CharStreams;
 import io.airlift.log.Logger;
+import io.confluent.kafka.schemaregistry.client.CachedSchemaRegistryClient;
+import io.confluent.kafka.schemaregistry.client.SchemaMetadata;
+import io.confluent.kafka.schemaregistry.client.SchemaRegistryClient;
+import io.confluent.kafka.schemaregistry.client.rest.exceptions.RestClientException;
 import io.prestosql.spi.HostAddress;
 import io.prestosql.spi.PrestoException;
 import io.prestosql.spi.connector.ConnectorSession;
@@ -27,6 +31,7 @@ import io.prestosql.spi.connector.ConnectorSplitSource;
 import io.prestosql.spi.connector.ConnectorTableHandle;
 import io.prestosql.spi.connector.ConnectorTransactionHandle;
 import io.prestosql.spi.connector.FixedSplitSource;
+import io.prestosql.spi.connector.TableNotFoundException;
 import kafka.api.PartitionOffsetRequestInfo;
 import kafka.cluster.BrokerEndPoint;
 import kafka.common.TopicAndPartition;
@@ -37,6 +42,7 @@ import kafka.javaapi.TopicMetadata;
 import kafka.javaapi.TopicMetadataRequest;
 import kafka.javaapi.TopicMetadataResponse;
 import kafka.javaapi.consumer.SimpleConsumer;
+import org.apache.avro.Schema;
 
 import javax.inject.Inject;
 
@@ -48,10 +54,13 @@ import java.net.MalformedURLException;
 import java.net.URI;
 import java.net.URL;
 import java.util.List;
+import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.ThreadLocalRandom;
 
 import static io.prestosql.plugin.kafka.KafkaErrorCode.KAFKA_SPLIT_ERROR;
+import static io.prestosql.plugin.kafka.KafkaMetadata.getSuffix;
+import static io.prestosql.plugin.kafka.KafkaMetadata.isAutoResolvable;
 import static io.prestosql.spi.StandardErrorCode.GENERIC_INTERNAL_ERROR;
 import static java.lang.String.format;
 import static java.nio.charset.StandardCharsets.UTF_8;
@@ -65,6 +74,7 @@ public class KafkaSplitManager
 
     private final KafkaSimpleConsumerManager consumerManager;
     private final Set<HostAddress> nodes;
+    private final Optional<SchemaRegistryClient> schemaRegistryClient;
 
     @Inject
     public KafkaSplitManager(
@@ -75,6 +85,8 @@ public class KafkaSplitManager
 
         requireNonNull(kafkaConfig, "kafkaConfig is null");
         this.nodes = ImmutableSet.copyOf(kafkaConfig.getNodes());
+        this.schemaRegistryClient = kafkaConfig.getSchemaRegistryUrl().map(schemaRegistryUrl ->
+                new CachedSchemaRegistryClient(schemaRegistryUrl, 1000));
     }
 
     @Override
@@ -104,14 +116,16 @@ public class KafkaSplitManager
                     // Kafka contains a reverse list of "end - start" pairs for the splits
 
                     long[] offsets = findAllOffsets(leaderConsumer, metadata.topic(), part.partitionId());
+                    Optional<String> keySchema = readSchema(kafkaTableHandle, true);
+                    Optional<String> messageSchema = readSchema(kafkaTableHandle, false);
 
                     for (int i = offsets.length - 1; i > 0; i--) {
                         KafkaSplit split = new KafkaSplit(
                                 metadata.topic(),
                                 kafkaTableHandle.getKeyDataFormat(),
                                 kafkaTableHandle.getMessageDataFormat(),
-                                kafkaTableHandle.getKeyDataSchemaLocation().map(KafkaSplitManager::readSchema),
-                                kafkaTableHandle.getMessageDataSchemaLocation().map(KafkaSplitManager::readSchema),
+                                keySchema,
+                                messageSchema,
                                 part.partitionId(),
                                 offsets[i],
                                 offsets[i - 1],
@@ -131,7 +145,34 @@ public class KafkaSplitManager
         }
     }
 
-    private static String readSchema(String dataSchemaLocation)
+    private Optional<String> readSchema(KafkaTableHandle tableHandle, boolean isKey)
+    {
+        Optional<String> schema = readSchemaFromSchemaRegistry(tableHandle, isKey);
+        if (schema.isPresent()) {
+            return schema;
+        }
+        if (isKey) {
+            return tableHandle.getKeyDataSchemaLocation().map(KafkaSplitManager::readSchemaFromUriOrFile);
+        }
+        else {
+            return tableHandle.getMessageDataSchemaLocation().map(KafkaSplitManager::readSchemaFromUriOrFile);
+        }
+    }
+    private Optional<String> readSchemaFromSchemaRegistry(KafkaTableHandle tableHandle, boolean isKey)
+    {
+        if (!isAutoResolvable(tableHandle, isKey)) {
+            return Optional.empty();
+        }
+        try {
+            SchemaMetadata schemaMetadata = schemaRegistryClient.get().getLatestSchemaMetadata(tableHandle.getTopicName() + getSuffix(isKey));
+            return Optional.of((new Schema.Parser()).parse(schemaMetadata.getSchema()).toString());
+        }
+        catch(IOException | RestClientException e) {
+            throw new TableNotFoundException(tableHandle.toSchemaTableName());
+        }
+    }
+
+    private static String readSchemaFromUriOrFile(String dataSchemaLocation)
     {
         InputStream inputStream = null;
         try {

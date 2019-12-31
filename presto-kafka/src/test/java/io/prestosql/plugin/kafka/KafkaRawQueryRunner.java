@@ -55,11 +55,15 @@ public final class KafkaRawQueryRunner
         Logging.initialize();
         Map<String, String> properties = ImmutableMap.of("http-server.http.port", "8080");
         Map<String, String> kafkaProperties = ImmutableMap.<String, String>builder()
-                .put("kafka.nodes", "localhost:32876")
-                .put("kafka.schema-registry-url", "http://localhost:8081")
+                .put("kafka.nodes", "10.252.24.253:9092")
+                .put("kafka.schema-registry-url", "http://10.252.27.244:8081")
+                .put("kafka.table-names", "order_central_avro_updates")
+                //.put("kafka.nodes", "localhost:32888")
+                //.put("kafka.schema-registry-url", "http://localhost:8081")
+                //.put("kafka.table-names", "foo,bar")
                 .put("kafka.hide-internal-columns", "false")
                 .put("kafka.table-description-dir", "/Users/elon/repos/tmp/kafka_testing")
-                .put("kafka.table-names", "foo")
+
                 .build();
         DistributedQueryRunner queryRunner = createKafkaQueryRunner(properties, kafkaProperties);
 
