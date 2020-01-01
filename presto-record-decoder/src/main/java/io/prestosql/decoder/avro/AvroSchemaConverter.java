@@ -30,7 +30,6 @@ import io.prestosql.spi.type.VarbinaryType;
 import io.prestosql.spi.type.VarcharType;
 import org.apache.avro.Schema;
 import org.apache.avro.Schema.Field;
-import org.apache.avro.Schema;
 
 import java.lang.invoke.MethodHandle;
 import java.util.List;
@@ -70,11 +69,13 @@ public class AvroSchemaConverter
 
     private final TypeManager typeManager;
 
-    public AvroSchemaConverter(TypeManager typeManager) {
+    public AvroSchemaConverter(TypeManager typeManager)
+    {
         this.typeManager = requireNonNull(typeManager, "typeManager is null");
     }
 
-    public List<Type> convertAvroSchema(Schema schema) {
+    public List<Type> convertAvroSchema(Schema schema)
+    {
         requireNonNull(schema, "schema is null");
         checkState(schema.getType().equals(RECORD), "schema is not an avro record");
         ImmutableList.Builder<Type> builder = ImmutableList.builder();
@@ -84,7 +85,8 @@ public class AvroSchemaConverter
         return builder.build();
     }
 
-    private Type convert(Schema schema) {
+    private Type convert(Schema schema)
+    {
         switch (schema.getType()) {
             case INT:
                 return IntegerType.INTEGER;
@@ -115,7 +117,8 @@ public class AvroSchemaConverter
         }
     }
 
-    private Type convertUnion(Schema schema) {
+    private Type convertUnion(Schema schema)
+    {
         checkArgument(schema.getType().equals(UNION), "schema is not a union schema");
         // Cannot use ImmutableSet.Builder because types may contain multiple FIXED types with different sizes
         Set<Schema.Type> types = schema.getTypes().stream()

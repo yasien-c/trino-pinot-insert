@@ -214,7 +214,6 @@ public class AvroColumnDecoder
             else if (value instanceof GenericFixed) {
                 return Slices.wrappedBuffer(((GenericFixed) value).bytes());
             }
-
         }
 
         throw new PrestoException(DECODER_CONVERSION_NOT_SUPPORTED, format("cannot decode object of '%s' as '%s' for column '%s'", value.getClass(), type, columnName));
@@ -323,7 +322,6 @@ public class AvroColumnDecoder
 
     private static Block serializeRow(BlockBuilder parentBlockBuilder, Object value, Type type, String columnName)
     {
-
         if (value == null) {
             checkState(parentBlockBuilder != null, "parent block builder is null");
             parentBlockBuilder.appendNull();
