@@ -28,6 +28,7 @@ import javax.validation.constraints.NotNull;
 import javax.validation.constraints.Size;
 
 import java.io.File;
+import java.util.Optional;
 import java.util.Set;
 import java.util.stream.StreamSupport;
 
@@ -45,6 +46,7 @@ public class KafkaConfig
     private File tableDescriptionDir = new File("etc/kafka/");
     private boolean hideInternalColumns = true;
     private int messagesPerSplit = 100_000;
+    private Optional<String> schemaRegistryUrl = Optional.empty();
 
     @Size(min = 1)
     public Set<HostAddress> getNodes()
@@ -139,6 +141,18 @@ public class KafkaConfig
     public KafkaConfig setTableDescriptionDir(File tableDescriptionDir)
     {
         this.tableDescriptionDir = tableDescriptionDir;
+        return this;
+    }
+
+    public Optional<String> getSchemaRegistryUrl()
+    {
+        return schemaRegistryUrl;
+    }
+
+    @Config("kafka.schema-registry-url")
+    public KafkaConfig setSchemaRegistryUrl(String schemaRegistryUrl)
+    {
+        this.schemaRegistryUrl = Optional.ofNullable(schemaRegistryUrl);
         return this;
     }
 

@@ -33,6 +33,7 @@ import java.util.Optional;
 
 import static com.google.common.collect.ImmutableSet.toImmutableSet;
 import static io.prestosql.plugin.kafka.KafkaHandleResolver.convertSplit;
+import static io.prestosql.plugin.kafka.decoder.AvroConfluentRowDecoderFactory.SCHEMA_REGISTRY_KEY;
 import static java.util.Objects.requireNonNull;
 
 public class KafkaRecordSetProvider
@@ -40,12 +41,14 @@ public class KafkaRecordSetProvider
 {
     private final DispatchingRowDecoderFactory decoderFactory;
     private final KafkaConsumerFactory consumerFactory;
+    private final KafkaConfig config;
 
     @Inject
-    public KafkaRecordSetProvider(DispatchingRowDecoderFactory decoderFactory, KafkaConsumerFactory consumerFactory)
+    public KafkaRecordSetProvider(DispatchingRowDecoderFactory decoderFactory, KafkaConsumerFactory consumerFactory, KafkaConfig config)
     {
         this.decoderFactory = requireNonNull(decoderFactory, "decoderFactory is null");
         this.consumerFactory = requireNonNull(consumerFactory, "consumerManager is null");
+        this.config = requireNonNull(config, "config is null");
     }
 
     @Override
@@ -80,6 +83,7 @@ public class KafkaRecordSetProvider
     {
         ImmutableMap.Builder<String, String> parameters = ImmutableMap.builder();
         dataSchema.ifPresent(schema -> parameters.put("dataSchema", schema));
+        config.getSchemaRegistryUrl().ifPresent(schemaRegistryUrl -> parameters.put(SCHEMA_REGISTRY_KEY, schemaRegistryUrl));
         return parameters.build();
     }
 }

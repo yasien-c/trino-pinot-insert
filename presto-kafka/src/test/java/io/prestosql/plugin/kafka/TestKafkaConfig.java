@@ -36,7 +36,8 @@ public class TestKafkaConfig
                 .setTableNames("")
                 .setTableDescriptionDir(new File("etc/kafka/"))
                 .setHideInternalColumns(true)
-                .setMessagesPerSplit(100_000));
+                .setMessagesPerSplit(100_000)
+                .setSchemaRegistryUrl(null));
     }
 
     @Test
@@ -51,6 +52,7 @@ public class TestKafkaConfig
                 .put("kafka.buffer-size", "1MB")
                 .put("kafka.hide-internal-columns", "false")
                 .put("kafka.messages-per-split", "1")
+                .put("kafka.schema-registry-url", "localhost:8081")
                 .build();
 
         KafkaConfig expected = new KafkaConfig()
@@ -61,7 +63,8 @@ public class TestKafkaConfig
                 .setKafkaConnectTimeout("1h")
                 .setKafkaBufferSize("1MB")
                 .setHideInternalColumns(false)
-                .setMessagesPerSplit(1);
+                .setMessagesPerSplit(1)
+                .setSchemaRegistryUrl("localhost:8081");
 
         assertFullMapping(properties, expected);
     }
