@@ -18,10 +18,14 @@ import com.fasterxml.jackson.databind.deser.std.FromStringDeserializer;
 import com.google.inject.Binder;
 import com.google.inject.Module;
 import com.google.inject.Scopes;
+import com.google.inject.multibindings.MapBinder;
 import io.prestosql.decoder.DecoderModule;
+import io.prestosql.decoder.RowDecoderFactory;
 import io.prestosql.plugin.base.classloader.ClassLoaderSafeConnectorRecordSetProvider;
 import io.prestosql.plugin.base.classloader.ClassLoaderSafeConnectorSplitManager;
 import io.prestosql.plugin.base.classloader.ForClassLoaderSafe;
+import io.prestosql.plugin.kafka.decoder.AvroConfluentRowDecoder;
+import io.prestosql.plugin.kafka.decoder.AvroConfluentRowDecoderFactory;
 import io.prestosql.spi.connector.ConnectorMetadata;
 import io.prestosql.spi.connector.ConnectorRecordSetProvider;
 import io.prestosql.spi.connector.ConnectorSplitManager;
@@ -31,6 +35,7 @@ import io.prestosql.spi.type.TypeManager;
 
 import javax.inject.Inject;
 
+import static com.google.inject.Scopes.SINGLETON;
 import static io.airlift.configuration.ConfigBinder.configBinder;
 import static io.airlift.json.JsonBinder.jsonBinder;
 import static io.airlift.json.JsonCodecBinder.jsonCodecBinder;
@@ -57,6 +62,8 @@ public class KafkaConnectorModule
         jsonCodecBinder(binder).bindJsonCodec(KafkaTopicDescription.class);
 
         binder.install(new DecoderModule());
+        MapBinder<String, RowDecoderFactory> decoderFactoriesByName = MapBinder.newMapBinder(binder, String.class, RowDecoderFactory.class);
+        decoderFactoriesByName.addBinding(AvroConfluentRowDecoder.NAME).to(AvroConfluentRowDecoderFactory.class).in(SINGLETON);
     }
 
     private static final class TypeDeserializer
