@@ -39,10 +39,10 @@ import static java.nio.file.Files.readAllBytes;
 import static java.util.Arrays.asList;
 import static java.util.Objects.requireNonNull;
 
-public class KafkaTableDescriptionSupplier
-        implements Supplier<Map<SchemaTableName, KafkaTopicDescription>>
+public class FileBasedTopicDescriptionLookupSupplier
+        implements Supplier<TopicDescriptionLookup>
 {
-    private static final Logger log = Logger.get(KafkaTableDescriptionSupplier.class);
+    private static final Logger log = Logger.get(FileBasedTopicDescriptionLookupSupplier.class);
 
     private final JsonCodec<KafkaTopicDescription> topicDescriptionCodec;
     private final File tableDescriptionDir;
@@ -50,7 +50,7 @@ public class KafkaTableDescriptionSupplier
     private final Set<String> tableNames;
 
     @Inject
-    KafkaTableDescriptionSupplier(KafkaConfig kafkaConfig, JsonCodec<KafkaTopicDescription> topicDescriptionCodec)
+    FileBasedTopicDescriptionLookupSupplier(KafkaConfig kafkaConfig, JsonCodec<KafkaTopicDescription> topicDescriptionCodec)
     {
         this.topicDescriptionCodec = requireNonNull(topicDescriptionCodec, "topicDescriptionCodec is null");
 
@@ -61,7 +61,7 @@ public class KafkaTableDescriptionSupplier
     }
 
     @Override
-    public Map<SchemaTableName, KafkaTopicDescription> get()
+    public TopicDescriptionLookup get()
     {
         ImmutableMap.Builder<SchemaTableName, KafkaTopicDescription> builder = ImmutableMap.builder();
 
@@ -108,7 +108,7 @@ public class KafkaTableDescriptionSupplier
                 }
             }
 
-            return builder.build();
+            return new MapBasedTopicDescriptionLookup(builder.build());
         }
         catch (IOException e) {
             log.warn(e, "Error: ");

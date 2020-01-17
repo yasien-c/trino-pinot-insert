@@ -13,24 +13,35 @@
  */
 package io.prestosql.plugin.kafka.util;
 
+import com.google.common.collect.ImmutableMap;
 import com.google.common.io.ByteStreams;
 import io.airlift.json.JsonCodec;
+import io.prestosql.metadata.Metadata;
 import io.prestosql.metadata.QualifiedObjectName;
+import io.prestosql.plugin.kafka.KafkaQueryRunner;
 import io.prestosql.plugin.kafka.KafkaTopicDescription;
 import io.prestosql.spi.connector.SchemaTableName;
 import io.prestosql.testing.TestingPrestoClient;
 import org.apache.kafka.clients.producer.KafkaProducer;
 
 import java.io.IOException;
+import java.io.UncheckedIOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.util.AbstractMap;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Properties;
 
+import static com.google.common.collect.ImmutableMap.toImmutableMap;
 import static java.lang.String.format;
+import static java.util.function.Function.identity;
 
 public final class TestUtils
 {
+    private static final String DEFAULT_SCHEMA = "default";
+
     private TestUtils() {}
 
     static Properties toProperties(Map<String, String> map)
@@ -58,6 +69,25 @@ public final class TestUtils
         return new AbstractMap.SimpleImmutableEntry<>(
                 schemaTableName,
                 new KafkaTopicDescription(schemaTableName.getTableName(), Optional.of(schemaTableName.getSchemaName()), topicName, tpchTemplate.getKey(), tpchTemplate.getMessage()));
+    }
+
+    public static Map<SchemaTableName, KafkaTopicDescription> createTopicDescriptions(Metadata metadata, String basePath)
+            throws Exception
+    {
+        JsonCodec<KafkaTopicDescription> topicDescriptionJsonCodec = new CodecSupplier<>(KafkaTopicDescription.class, metadata).get();
+        return Files.list(Paths.get(KafkaQueryRunner.class.getClass().getResource(basePath).getFile()))
+                .map(path -> getTopicDescriptionFromPath(topicDescriptionJsonCodec, path))
+                .collect(toImmutableMap(topicDescription -> new SchemaTableName(topicDescription.getSchemaName().orElse(DEFAULT_SCHEMA), topicDescription.getTableName()), identity()));
+    }
+
+    private static KafkaTopicDescription getTopicDescriptionFromPath(JsonCodec<KafkaTopicDescription> topicDescriptionJsonCodec, Path path)
+    {
+        try {
+            return topicDescriptionJsonCodec.fromJson(ByteStreams.toByteArray(Files.newInputStream(path)));
+        }
+        catch (IOException e) {
+            throw new UncheckedIOException(e);
+        }
     }
 
     public static Map.Entry<SchemaTableName, KafkaTopicDescription> createEmptyTopicDescription(String topicName, SchemaTableName schemaTableName)

@@ -24,7 +24,6 @@ import io.prestosql.spi.connector.Connector;
 import io.prestosql.spi.connector.ConnectorContext;
 import io.prestosql.spi.connector.ConnectorFactory;
 import io.prestosql.spi.connector.ConnectorHandleResolver;
-import io.prestosql.spi.connector.SchemaTableName;
 import io.prestosql.spi.connector.classloader.ClassLoaderSafeConnectorRecordSetProvider;
 import io.prestosql.spi.connector.classloader.ClassLoaderSafeConnectorSplitManager;
 import io.prestosql.spi.type.TypeManager;
@@ -38,11 +37,11 @@ import static java.util.Objects.requireNonNull;
 public class KafkaConnectorFactory
         implements ConnectorFactory
 {
-    private final Optional<Supplier<Map<SchemaTableName, KafkaTopicDescription>>> tableDescriptionSupplier;
+    private final Optional<TopicDescriptionLookup> topicDescriptionLookup;
 
-    KafkaConnectorFactory(Optional<Supplier<Map<SchemaTableName, KafkaTopicDescription>>> tableDescriptionSupplier)
+    KafkaConnectorFactory(Optional<TopicDescriptionLookup> topicDescriptionLookup)
     {
-        this.tableDescriptionSupplier = requireNonNull(tableDescriptionSupplier, "tableDescriptionSupplier is null");
+        this.topicDescriptionLookup = requireNonNull(topicDescriptionLookup, "tableDescriptionSupplier is null");
     }
 
     @Override
@@ -70,11 +69,11 @@ public class KafkaConnectorFactory
                     binder.bind(TypeManager.class).toInstance(context.getTypeManager());
                     binder.bind(NodeManager.class).toInstance(context.getNodeManager());
 
-                    if (tableDescriptionSupplier.isPresent()) {
-                        binder.bind(new TypeLiteral<Supplier<Map<SchemaTableName, KafkaTopicDescription>>>() {}).toInstance(tableDescriptionSupplier.get());
+                    if (topicDescriptionLookup.isPresent()) {
+                        binder.bind(new TypeLiteral<Supplier<TopicDescriptionLookup>>() {}).toInstance(() -> topicDescriptionLookup.get());
                     }
                     else {
-                        binder.bind(new TypeLiteral<Supplier<Map<SchemaTableName, KafkaTopicDescription>>>() {}).to(KafkaTableDescriptionSupplier.class).in(Scopes.SINGLETON);
+                        binder.bind(new TypeLiteral<Supplier<TopicDescriptionLookup>>() {}).to(FileBasedTopicDescriptionLookupSupplier.class).in(Scopes.SINGLETON);
                     }
                 });
 

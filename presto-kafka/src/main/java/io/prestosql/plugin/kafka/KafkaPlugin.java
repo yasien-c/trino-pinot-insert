@@ -17,28 +17,25 @@ import com.google.common.annotations.VisibleForTesting;
 import com.google.common.collect.ImmutableList;
 import io.prestosql.spi.Plugin;
 import io.prestosql.spi.connector.ConnectorFactory;
-import io.prestosql.spi.connector.SchemaTableName;
 
-import java.util.Map;
 import java.util.Optional;
-import java.util.function.Supplier;
 
 import static java.util.Objects.requireNonNull;
 
 public class KafkaPlugin
         implements Plugin
 {
-    private Optional<Supplier<Map<SchemaTableName, KafkaTopicDescription>>> tableDescriptionSupplier = Optional.empty();
+    private Optional<TopicDescriptionLookup> topicDescriptionLookup = Optional.empty();
 
     @VisibleForTesting
-    public synchronized void setTableDescriptionSupplier(Supplier<Map<SchemaTableName, KafkaTopicDescription>> tableDescriptionSupplier)
+    public synchronized void setTopicDescriptionLookup(TopicDescriptionLookup topicDescriptionLookup)
     {
-        this.tableDescriptionSupplier = Optional.of(requireNonNull(tableDescriptionSupplier, "tableDescriptionSupplier is null"));
+        this.topicDescriptionLookup = Optional.of(requireNonNull(topicDescriptionLookup, "topicDescriptionLookup is null"));
     }
 
     @Override
     public synchronized Iterable<ConnectorFactory> getConnectorFactories()
     {
-        return ImmutableList.of(new KafkaConnectorFactory(tableDescriptionSupplier));
+        return ImmutableList.of(new KafkaConnectorFactory(topicDescriptionLookup));
     }
 }

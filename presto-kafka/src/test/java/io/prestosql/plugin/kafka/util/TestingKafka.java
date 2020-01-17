@@ -18,6 +18,7 @@ import org.apache.kafka.clients.producer.KafkaProducer;
 import org.apache.kafka.clients.producer.ProducerConfig;
 import org.apache.kafka.common.serialization.LongSerializer;
 import org.testcontainers.containers.KafkaContainer;
+import org.testcontainers.containers.Network;
 
 import java.io.Closeable;
 import java.util.ArrayList;
@@ -34,7 +35,17 @@ public class TestingKafka
 
     public TestingKafka()
     {
-        container = new KafkaContainer("5.2.1");
+        container = new KafkaContainer("5.2.1").withNetwork(Network.newNetwork());
+    }
+
+    protected Network getNetwork()
+    {
+        return container.getNetwork();
+    }
+
+    protected String getInternalConnectString()
+    {
+        return container.getNetworkAliases() + ":9092";
     }
 
     public void start()
