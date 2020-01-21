@@ -1,0 +1,50 @@
+{
+  "type": "record",
+  "name": "myrecord",
+  "fields": [
+    {
+      "name": "f1",
+      "type": "string"
+    },
+    {
+      "name": "f2",
+      "type": ["null", "int"],
+      "default": null
+    },
+    {
+      "name": "f3",
+      "type": ["null", {"type": "array", "items": "long"}],
+      "default": null
+    },
+    {
+      "name" : "f4",
+      "type" : ["null", {"type" : "map", "values" : "long"}],
+      "default" : null
+    },
+    {
+      "name" : "f5",
+      "type" : [ "null", {
+        "type" : "record",
+        "name" : "subRecord",
+        "fields" : [
+           {
+             "name" : "field1",
+             "type" : "string"
+           },
+           {
+             "name" : "field2",
+             "type" : "long"
+           },
+           {
+             "name" : "field3",
+             "type" : {
+               "type" : "array",
+               "items" : "long"
+             }
+           }
+        ]
+      }],
+      "default" : null
+    }
+  ]
+}

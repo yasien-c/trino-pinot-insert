@@ -1,0 +1,44 @@
+{
+  "tableName": "bar",
+  "schemaName": "default",
+  "topicName": "foo",
+  "key": {
+    "dataFormat": "raw",
+    "fields": [
+      {
+        "name": "key_col",
+        "type": "varchar"
+      }
+    ]
+  },
+  "message": {
+    "dataFormat": "avro-confluent",
+    "fields": [
+      {
+        "name": "f1",
+        "type": "varchar",
+        "mapping": "f1"
+      },
+      {
+        "name": "f2",
+        "type": "integer",
+        "mapping": "f2"
+      },
+      {
+        "name": "f3",
+        "type": "array<bigint>",
+        "mapping": "f3"
+      },
+      {
+        "name": "f4",
+        "type": "map<varchar, bigint>",
+        "mapping": "f4"
+      },
+      {
+        "name": "f5",
+        "type": "row(field1 varchar, field2 bigint, field3 array<bigint>)",
+        "mapping": "f5"
+      }
+    ]
+  }
+}

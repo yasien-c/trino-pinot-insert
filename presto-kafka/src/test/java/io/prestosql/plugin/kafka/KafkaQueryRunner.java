@@ -23,20 +23,25 @@ import io.airlift.log.Logging;
 import io.prestosql.Session;
 import io.prestosql.metadata.Metadata;
 import io.prestosql.metadata.QualifiedObjectName;
+import io.prestosql.plugin.kafka.lookup.MapBasedTopicDescriptionLookup;
 import io.prestosql.plugin.kafka.util.CodecSupplier;
 import io.prestosql.plugin.kafka.util.TestUtils;
 import io.prestosql.plugin.kafka.util.TestingKafka;
+import io.prestosql.plugin.kafka.util.TestingKafkaWithSchemaRegistry;
 import io.prestosql.plugin.tpch.TpchPlugin;
 import io.prestosql.spi.connector.SchemaTableName;
 import io.prestosql.testing.DistributedQueryRunner;
 import io.prestosql.testing.TestingPrestoClient;
 import io.prestosql.tpch.TpchTable;
 
+import java.nio.file.Path;
 import java.util.HashMap;
 import java.util.Map;
 
 import static io.airlift.testing.Closeables.closeAllSuppress;
 import static io.airlift.units.Duration.nanosSince;
+import static io.prestosql.plugin.kafka.util.AvroSchemaRegistryTestUtils.DEFAULT_SCHEMA;
+import static io.prestosql.plugin.kafka.util.AvroSchemaRegistryTestUtils.createTopicDescriptions;
 import static io.prestosql.plugin.kafka.util.TestUtils.loadTpchTopicDescription;
 import static io.prestosql.plugin.tpch.TpchMetadata.TINY_SCHEMA_NAME;
 import static io.prestosql.testing.TestingSession.testSessionBuilder;
@@ -98,7 +103,7 @@ public final class KafkaQueryRunner
                     .putAll(tpchTopicDescriptions)
                     .build();
             KafkaPlugin kafkaPlugin = new KafkaPlugin();
-            kafkaPlugin.setTableDescriptionSupplier(() -> topicDescriptions);
+            kafkaPlugin.setTopicDescriptionLookup(new MapBasedTopicDescriptionLookup(topicDescriptions));
             queryRunner.installPlugin(kafkaPlugin);
 
             Map<String, String> kafkaProperties = new HashMap<>(ImmutableMap.copyOf(extraKafkaProperties));
@@ -126,6 +131,90 @@ public final class KafkaQueryRunner
         }
     }
 
+    static DistributedQueryRunner createKafkaQueryRunner(
+            TestingKafkaWithSchemaRegistry testingKafkaWithSchemaRegistry,
+            Map<String, String> extraProperties,
+            Map<String, String> extraKafkaProperties,
+            String resourcePath,
+            Path destinationPath)
+            throws Exception
+    {
+        Logging logging = Logging.initialize();
+        logging.setLevel("org.apache.kafka", Level.WARN);
+
+        DistributedQueryRunner queryRunner = null;
+        try {
+            queryRunner = DistributedQueryRunner.builder(createAvroSchemaRegistrySession())
+                    .setNodeCount(2)
+                    .setExtraProperties(extraProperties)
+                    .build();
+
+            testingKafkaWithSchemaRegistry.start();
+
+            Map<SchemaTableName, KafkaTopicDescription> topicDescriptions = createTopicDescriptions(queryRunner.getCoordinator().getMetadata(), resourcePath, destinationPath);
+
+            topicDescriptions.values().stream()
+                    .forEach(topicDescription -> testingKafkaWithSchemaRegistry.createTopics(topicDescription.getTopicName()));
+
+            KafkaPlugin kafkaPlugin = new KafkaPlugin();
+            kafkaPlugin.setTopicDescriptionLookup(new MapBasedTopicDescriptionLookup(topicDescriptions));
+            queryRunner.installPlugin(kafkaPlugin);
+            Map<String, String> extraKafkaPropertiesWithTables = ImmutableMap.<String, String>builder()
+                    .putAll(extraKafkaProperties)
+                    .put("kafka.table-names", Joiner.on(",").join(topicDescriptions.keySet()))
+                    .build();
+            return createKafkaQueryRunner(testingKafkaWithSchemaRegistry, queryRunner, extraKafkaPropertiesWithTables);
+        }
+        catch (Throwable e) {
+            closeAllSuppress(e, queryRunner, testingKafkaWithSchemaRegistry);
+            throw e;
+        }
+    }
+
+    static DistributedQueryRunner createKafkaQueryRunner(
+            TestingKafkaWithSchemaRegistry testingKafkaWithSchemaRegistry,
+            Map<String, String> extraProperties,
+            Map<String, String> extraKafkaProperties)
+            throws Exception
+    {
+        Logging logging = Logging.initialize();
+        logging.setLevel("org.apache.kafka", Level.WARN);
+
+        DistributedQueryRunner queryRunner = null;
+        try {
+            queryRunner = DistributedQueryRunner.builder(createAvroSchemaRegistrySession())
+                    .setNodeCount(2)
+                    .setExtraProperties(extraProperties)
+                    .build();
+            queryRunner.installPlugin(new KafkaPlugin());
+            Map<String, String> extraKafkaPropertiesWithSchemaRegistryLookup = ImmutableMap.<String, String>builder()
+                    .putAll(extraKafkaProperties)
+                    .put("kafka.topic-description-lookup", "schema-registry")
+                    .build();
+            testingKafkaWithSchemaRegistry.start();
+            return createKafkaQueryRunner(testingKafkaWithSchemaRegistry, queryRunner, extraKafkaPropertiesWithSchemaRegistryLookup);
+        }
+        catch (Throwable e) {
+            closeAllSuppress(e, queryRunner, testingKafkaWithSchemaRegistry);
+            throw e;
+        }
+    }
+
+    private static DistributedQueryRunner createKafkaQueryRunner(
+            TestingKafkaWithSchemaRegistry testingKafkaWithSchemaRegistry,
+            DistributedQueryRunner queryRunner,
+            Map<String, String> extraKafkaProperties)
+    {
+        Map<String, String> kafkaProperties = new HashMap<>(ImmutableMap.copyOf(extraKafkaProperties));
+        kafkaProperties.putIfAbsent("kafka.nodes", testingKafkaWithSchemaRegistry.getConnectString());
+        kafkaProperties.putIfAbsent("kafka.connect-timeout", "120s");
+        kafkaProperties.putIfAbsent("kafka.default-schema", "default");
+        kafkaProperties.putIfAbsent("kafka.messages-per-split", "1000");
+        kafkaProperties.putIfAbsent("kafka.schema-registry-url", testingKafkaWithSchemaRegistry.getSchemaRegistryConnectString());
+        queryRunner.createCatalog("kafka", "kafka", kafkaProperties);
+        return queryRunner;
+    }
+
     private static void loadTpchTopic(TestingKafka testingKafka, TestingPrestoClient prestoClient, TpchTable<?> table)
     {
         long start = System.nanoTime();
@@ -143,7 +232,6 @@ public final class KafkaQueryRunner
             throws Exception
     {
         JsonCodec<KafkaTopicDescription> topicDescriptionJsonCodec = new CodecSupplier<>(KafkaTopicDescription.class, metadata).get();
-
         ImmutableMap.Builder<SchemaTableName, KafkaTopicDescription> topicDescriptions = ImmutableMap.builder();
         for (TpchTable<?> table : tables) {
             String tableName = table.getTableName();
@@ -159,6 +247,14 @@ public final class KafkaQueryRunner
         return testSessionBuilder()
                 .setCatalog("kafka")
                 .setSchema(TPCH_SCHEMA)
+                .build();
+    }
+
+    private static Session createAvroSchemaRegistrySession()
+    {
+        return testSessionBuilder()
+                .setCatalog("kafka")
+                .setSchema(DEFAULT_SCHEMA)
                 .build();
     }
 

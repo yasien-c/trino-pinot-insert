@@ -16,16 +16,25 @@ package io.prestosql.plugin.kafka;
 import com.fasterxml.jackson.databind.DeserializationContext;
 import com.fasterxml.jackson.databind.deser.std.FromStringDeserializer;
 import com.google.inject.Binder;
-import com.google.inject.Module;
 import com.google.inject.Scopes;
 import com.google.inject.multibindings.MapBinder;
+import io.airlift.configuration.AbstractConfigurationAwareModule;
 import io.prestosql.decoder.DecoderModule;
 import io.prestosql.decoder.RowDecoderFactory;
+import io.prestosql.decoder.avro.AvroRowDecoder;
 import io.prestosql.plugin.base.classloader.ClassLoaderSafeConnectorRecordSetProvider;
 import io.prestosql.plugin.base.classloader.ClassLoaderSafeConnectorSplitManager;
 import io.prestosql.plugin.base.classloader.ForClassLoaderSafe;
 import io.prestosql.plugin.kafka.decoder.AvroConfluentRowDecoder;
 import io.prestosql.plugin.kafka.decoder.AvroConfluentRowDecoderFactory;
+import io.prestosql.plugin.kafka.decoder.AvroConfluentSchemaReader;
+import io.prestosql.plugin.kafka.decoder.AvroSchemaReader;
+import io.prestosql.plugin.kafka.decoder.DispatchingSchemaReader;
+import io.prestosql.plugin.kafka.decoder.SchemaReader;
+import io.prestosql.plugin.kafka.lookup.DispatchingTopicDescriptionLookup;
+import io.prestosql.plugin.kafka.lookup.FileBasedTopicDescriptionLookupProvider;
+import io.prestosql.plugin.kafka.lookup.SchemaRegistryTopicDescriptionLookup;
+import io.prestosql.plugin.kafka.lookup.TopicDescriptionLookup;
 import io.prestosql.spi.connector.ConnectorMetadata;
 import io.prestosql.spi.connector.ConnectorRecordSetProvider;
 import io.prestosql.spi.connector.ConnectorSplitManager;
@@ -42,10 +51,10 @@ import static io.airlift.json.JsonCodecBinder.jsonCodecBinder;
 import static java.util.Objects.requireNonNull;
 
 public class KafkaConnectorModule
-        implements Module
+        extends AbstractConfigurationAwareModule
 {
     @Override
-    public void configure(Binder binder)
+    public void setup(Binder binder)
     {
         binder.bind(ConnectorMetadata.class).to(KafkaMetadata.class).in(Scopes.SINGLETON);
         binder.bind(ConnectorSplitManager.class).annotatedWith(ForClassLoaderSafe.class).to(KafkaSplitManager.class).in(Scopes.SINGLETON);
@@ -64,6 +73,22 @@ public class KafkaConnectorModule
         binder.install(new DecoderModule());
         MapBinder<String, RowDecoderFactory> decoderFactoriesByName = MapBinder.newMapBinder(binder, String.class, RowDecoderFactory.class);
         decoderFactoriesByName.addBinding(AvroConfluentRowDecoder.NAME).to(AvroConfluentRowDecoderFactory.class).in(SINGLETON);
+
+        binder.bind(DispatchingSchemaReader.class).in(SINGLETON);
+        MapBinder<String, SchemaReader> schemaReadersByName = MapBinder.newMapBinder(binder, String.class, SchemaReader.class);
+        schemaReadersByName.addBinding(AvroRowDecoder.NAME).to(AvroSchemaReader.class).in(SINGLETON);
+        schemaReadersByName.addBinding(AvroConfluentRowDecoder.NAME).to(AvroConfluentSchemaReader.class).in(SINGLETON);
+
+        binder.bind(DispatchingTopicDescriptionLookup.class).in(SINGLETON);
+        MapBinder<String, TopicDescriptionLookup> topicDescriptionLookupByName = MapBinder.newMapBinder(binder, String.class, TopicDescriptionLookup.class);
+
+        KafkaConfig kafkaConfig = buildConfigObject(KafkaConfig.class);
+        if (kafkaConfig.getSchemaRegistryUrl().isPresent() && kafkaConfig.getTopicDescriptionLookup().equalsIgnoreCase(SchemaRegistryTopicDescriptionLookup.NAME)) {
+            topicDescriptionLookupByName.addBinding(SchemaRegistryTopicDescriptionLookup.NAME).to(SchemaRegistryTopicDescriptionLookup.class).in(SINGLETON);
+        }
+        if (kafkaConfig.getTopicDescriptionLookup().equalsIgnoreCase(FileBasedTopicDescriptionLookupProvider.NAME)) {
+            topicDescriptionLookupByName.addBinding(FileBasedTopicDescriptionLookupProvider.NAME).toProvider(FileBasedTopicDescriptionLookupProvider.class).in(SINGLETON);
+        }
     }
 
     private static final class TypeDeserializer

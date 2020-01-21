@@ -125,7 +125,7 @@ public abstract class AbstractTestQueryFramework
         QueryAssertions.assertQuery(queryRunner, session, sql, h2QueryRunner, sql, false, false);
     }
 
-    protected void assertQuery(@Language("SQL") String actual, @Language("SQL") String expected)
+    protected void assertQuery(String actual, @Language("SQL") String expected)
     {
         QueryAssertions.assertQuery(queryRunner, getSession(), actual, h2QueryRunner, expected, false, false);
     }

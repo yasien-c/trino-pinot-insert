@@ -11,7 +11,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package io.prestosql.plugin.kafka;
+package io.prestosql.plugin.kafka.lookup;
 
 import com.google.common.base.Splitter;
 import com.google.common.collect.ImmutableList;
@@ -20,9 +20,13 @@ import com.google.common.collect.ImmutableSet;
 import io.airlift.json.JsonCodec;
 import io.airlift.log.Logger;
 import io.prestosql.decoder.dummy.DummyRowDecoder;
+import io.prestosql.plugin.kafka.KafkaConfig;
+import io.prestosql.plugin.kafka.KafkaTopicDescription;
+import io.prestosql.plugin.kafka.KafkaTopicFieldGroup;
 import io.prestosql.spi.connector.SchemaTableName;
 
 import javax.inject.Inject;
+import javax.inject.Provider;
 
 import java.io.File;
 import java.io.IOException;
@@ -31,7 +35,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
-import java.util.function.Supplier;
 
 import static com.google.common.base.Preconditions.checkArgument;
 import static com.google.common.base.Strings.isNullOrEmpty;
@@ -39,10 +42,12 @@ import static java.nio.file.Files.readAllBytes;
 import static java.util.Arrays.asList;
 import static java.util.Objects.requireNonNull;
 
-public class KafkaTableDescriptionSupplier
-        implements Supplier<Map<SchemaTableName, KafkaTopicDescription>>
+public class FileBasedTopicDescriptionLookupProvider
+        implements Provider<TopicDescriptionLookup>
 {
-    private static final Logger log = Logger.get(KafkaTableDescriptionSupplier.class);
+    public static final String NAME = "file";
+
+    private static final Logger log = Logger.get(FileBasedTopicDescriptionLookupProvider.class);
 
     private final JsonCodec<KafkaTopicDescription> topicDescriptionCodec;
     private final File tableDescriptionDir;
@@ -50,7 +55,7 @@ public class KafkaTableDescriptionSupplier
     private final Set<String> tableNames;
 
     @Inject
-    KafkaTableDescriptionSupplier(KafkaConfig kafkaConfig, JsonCodec<KafkaTopicDescription> topicDescriptionCodec)
+    FileBasedTopicDescriptionLookupProvider(KafkaConfig kafkaConfig, JsonCodec<KafkaTopicDescription> topicDescriptionCodec)
     {
         this.topicDescriptionCodec = requireNonNull(topicDescriptionCodec, "topicDescriptionCodec is null");
 
@@ -61,7 +66,7 @@ public class KafkaTableDescriptionSupplier
     }
 
     @Override
-    public Map<SchemaTableName, KafkaTopicDescription> get()
+    public TopicDescriptionLookup get()
     {
         ImmutableMap.Builder<SchemaTableName, KafkaTopicDescription> builder = ImmutableMap.builder();
 
@@ -108,7 +113,7 @@ public class KafkaTableDescriptionSupplier
                 }
             }
 
-            return builder.build();
+            return new MapBasedTopicDescriptionLookup(builder.build());
         }
         catch (IOException e) {
             log.warn(e, "Error: ");

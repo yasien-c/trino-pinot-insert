@@ -48,6 +48,7 @@ public class KafkaConfig
     private int messagesPerSplit = 100_000;
     private Optional<String> schemaRegistryUrl = Optional.empty();
     private int schemaRegistryCapacity = 1000;
+    private String topicDescriptionLookup = "file";
 
     @Size(min = 1)
     public Set<HostAddress> getNodes()
@@ -167,6 +168,19 @@ public class KafkaConfig
     public KafkaConfig setSchemaRegistryCapacity(int schemaRegistryCapacity)
     {
         this.schemaRegistryCapacity = schemaRegistryCapacity;
+        return this;
+    }
+
+    public String getTopicDescriptionLookup()
+    {
+        return topicDescriptionLookup;
+    }
+
+    @Config("kafka.topic-description-lookup")
+    @ConfigDescription("Specify the topic description lookup")
+    public KafkaConfig setTopicDescriptionLookup(String topicDescriptionLookup)
+    {
+        this.topicDescriptionLookup = topicDescriptionLookup;
         return this;
     }
 

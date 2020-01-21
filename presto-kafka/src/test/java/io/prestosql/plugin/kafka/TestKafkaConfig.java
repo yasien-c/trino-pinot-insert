@@ -38,7 +38,8 @@ public class TestKafkaConfig
                 .setHideInternalColumns(true)
                 .setMessagesPerSplit(100_000)
                 .setSchemaRegistryUrl(null)
-                .setSchemaRegistryCapacity(1000));
+                .setSchemaRegistryCapacity(1000)
+                .setTopicDescriptionLookup("file"));
     }
 
     @Test
@@ -55,6 +56,7 @@ public class TestKafkaConfig
                 .put("kafka.messages-per-split", "1")
                 .put("kafka.schema-registry-url", "localhost:8081")
                 .put("kafka.schema-registry-capacity", "2000")
+                .put("kafka.topic-description-lookup", "schema-registry")
                 .build();
 
         KafkaConfig expected = new KafkaConfig()
@@ -67,7 +69,8 @@ public class TestKafkaConfig
                 .setHideInternalColumns(false)
                 .setMessagesPerSplit(1)
                 .setSchemaRegistryUrl("localhost:8081")
-                .setSchemaRegistryCapacity(2000);
+                .setSchemaRegistryCapacity(2000)
+                .setTopicDescriptionLookup("schema-registry");
 
         assertFullMapping(properties, expected);
     }

@@ -14,7 +14,7 @@
 package io.prestosql.plugin.kafka;
 
 import com.google.common.collect.ImmutableList;
-import com.google.common.io.CharStreams;
+import io.prestosql.plugin.kafka.decoder.DispatchingSchemaReader;
 import io.prestosql.spi.HostAddress;
 import io.prestosql.spi.PrestoException;
 import io.prestosql.spi.connector.ConnectorSession;
@@ -29,23 +29,13 @@ import org.apache.kafka.common.TopicPartition;
 
 import javax.inject.Inject;
 
-import java.io.FileInputStream;
-import java.io.IOException;
-import java.io.InputStream;
-import java.io.InputStreamReader;
-import java.net.MalformedURLException;
-import java.net.URI;
-import java.net.URL;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 
 import static com.google.common.collect.ImmutableList.toImmutableList;
 import static io.prestosql.plugin.kafka.KafkaErrorCode.KAFKA_SPLIT_ERROR;
-import static io.prestosql.spi.StandardErrorCode.GENERIC_INTERNAL_ERROR;
 import static java.lang.String.format;
-import static java.nio.charset.StandardCharsets.UTF_8;
-import static java.util.Locale.ENGLISH;
 import static java.util.Objects.requireNonNull;
 
 public class KafkaSplitManager
@@ -53,12 +43,14 @@ public class KafkaSplitManager
 {
     private final KafkaConsumerFactory consumerFactory;
     private final int messagesPerSplit;
+    private final DispatchingSchemaReader dispatchingSchemaReader;
 
     @Inject
-    public KafkaSplitManager(KafkaConsumerFactory consumerFactory, KafkaConfig kafkaConfig)
+    public KafkaSplitManager(KafkaConsumerFactory consumerFactory, KafkaConfig kafkaConfig, DispatchingSchemaReader dispatchingSchemaReader)
     {
         this.consumerFactory = requireNonNull(consumerFactory, "consumerManager is null");
         messagesPerSplit = requireNonNull(kafkaConfig, "kafkaConfig is null").getMessagesPerSplit();
+        this.dispatchingSchemaReader = requireNonNull(dispatchingSchemaReader, "dispatchingSchemaReader is null");
     }
 
     @Override
@@ -76,10 +68,8 @@ public class KafkaSplitManager
             Map<TopicPartition, Long> partitionEndOffsets = kafkaConsumer.endOffsets(topicPartitions);
 
             ImmutableList.Builder<KafkaSplit> splits = ImmutableList.builder();
-            Optional<String> keyDataSchemaContents = kafkaTableHandle.getKeyDataSchemaLocation()
-                    .map(KafkaSplitManager::readSchema);
-            Optional<String> messageDataSchemaContents = kafkaTableHandle.getMessageDataSchemaLocation()
-                    .map(KafkaSplitManager::readSchema);
+            Optional<String> keyDataSchemaContents = readSchema(kafkaTableHandle, true);
+            Optional<String> messageDataSchemaContents = readSchema(kafkaTableHandle, false);
             for (PartitionInfo partitionInfo : partitionInfos) {
                 TopicPartition topicPartition = toTopicPartition(partitionInfo);
                 HostAddress leader = HostAddress.fromParts(partitionInfo.leader().host(), partitionInfo.leader().port());
@@ -106,57 +96,30 @@ public class KafkaSplitManager
         }
     }
 
+    private String getDataFormat(KafkaTableHandle kafkaTableHandle, boolean isKey)
+    {
+        if (isKey) {
+            return kafkaTableHandle.getKeyDataFormat();
+        }
+        return kafkaTableHandle.getMessageDataFormat();
+    }
+
+    private Optional<String> getSchemaLocation(KafkaTableHandle kafkaTableHandle, boolean isKey)
+    {
+        if (isKey) {
+            return kafkaTableHandle.getKeyDataSchemaLocation();
+        }
+        return kafkaTableHandle.getMessageDataSchemaLocation();
+    }
+
+    private Optional<String> readSchema(KafkaTableHandle kafkaTableHandle, boolean isKey)
+    {
+        return dispatchingSchemaReader.getSchemaReader(getDataFormat(kafkaTableHandle, isKey))
+                .readSchema(kafkaTableHandle.getTopicName(), getSchemaLocation(kafkaTableHandle, isKey), isKey);
+    }
+
     private static TopicPartition toTopicPartition(PartitionInfo partitionInfo)
     {
         return new TopicPartition(partitionInfo.topic(), partitionInfo.partition());
-    }
-
-    private static String readSchema(String dataSchemaLocation)
-    {
-        InputStream inputStream = null;
-        try {
-            if (isURI(dataSchemaLocation.trim().toLowerCase(ENGLISH))) {
-                try {
-                    inputStream = new URL(dataSchemaLocation).openStream();
-                }
-                catch (MalformedURLException e) {
-                    // try again before failing
-                    inputStream = new FileInputStream(dataSchemaLocation);
-                }
-            }
-            else {
-                inputStream = new FileInputStream(dataSchemaLocation);
-            }
-            return CharStreams.toString(new InputStreamReader(inputStream, UTF_8));
-        }
-        catch (IOException e) {
-            throw new PrestoException(GENERIC_INTERNAL_ERROR, "Could not parse the Avro schema at: " + dataSchemaLocation, e);
-        }
-        finally {
-            closeQuietly(inputStream);
-        }
-    }
-
-    private static void closeQuietly(InputStream stream)
-    {
-        try {
-            if (stream != null) {
-                stream.close();
-            }
-        }
-        catch (IOException ignored) {
-        }
-    }
-
-    private static boolean isURI(String location)
-    {
-        try {
-            //noinspection ResultOfMethodCallIgnored
-            URI.create(location);
-        }
-        catch (Exception e) {
-            return false;
-        }
-        return true;
     }
 }

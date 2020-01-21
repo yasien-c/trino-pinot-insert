@@ -17,6 +17,8 @@ import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableSet;
 import io.prestosql.decoder.dummy.DummyRowDecoder;
+import io.prestosql.plugin.kafka.lookup.DispatchingTopicDescriptionLookup;
+import io.prestosql.plugin.kafka.lookup.TopicDescriptionLookup;
 import io.prestosql.spi.connector.ColumnHandle;
 import io.prestosql.spi.connector.ColumnMetadata;
 import io.prestosql.spi.connector.ConnectorMetadata;
@@ -34,7 +36,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.atomic.AtomicInteger;
-import java.util.function.Supplier;
 
 import static io.prestosql.plugin.kafka.KafkaHandleResolver.convertColumnHandle;
 import static io.prestosql.plugin.kafka.KafkaHandleResolver.convertTableHandle;
@@ -49,25 +50,31 @@ public class KafkaMetadata
         implements ConnectorMetadata
 {
     private final boolean hideInternalColumns;
-    private final Map<SchemaTableName, KafkaTopicDescription> tableDescriptions;
+    private final TopicDescriptionLookup tableDescriptions;
 
     @Inject
     public KafkaMetadata(
             KafkaConfig kafkaConfig,
-            Supplier<Map<SchemaTableName, KafkaTopicDescription>> kafkaTableDescriptionSupplier)
+            DispatchingTopicDescriptionLookup dispatchingTopicDescriptionLookup,
+            Optional<TopicDescriptionLookup> tableDescriptionSupplier)
     {
         requireNonNull(kafkaConfig, "kafkaConfig is null");
         this.hideInternalColumns = kafkaConfig.isHideInternalColumns();
 
-        requireNonNull(kafkaTableDescriptionSupplier, "kafkaTableDescriptionSupplier is null");
-        this.tableDescriptions = kafkaTableDescriptionSupplier.get();
+        requireNonNull(tableDescriptionSupplier, "tableDescriptions is null");
+        if (tableDescriptionSupplier.isPresent()) {
+            this.tableDescriptions = tableDescriptionSupplier.get();
+        }
+        else {
+            this.tableDescriptions = dispatchingTopicDescriptionLookup.getTopicDescriptionLookup(kafkaConfig.getTopicDescriptionLookup());
+        }
     }
 
     @Override
     public List<String> listSchemaNames(ConnectorSession session)
     {
         ImmutableSet.Builder<String> builder = ImmutableSet.builder();
-        for (SchemaTableName tableName : tableDescriptions.keySet()) {
+        for (SchemaTableName tableName : tableDescriptions.getAllTables()) {
             builder.add(tableName.getSchemaName());
         }
         return ImmutableList.copyOf(builder.build());
@@ -76,7 +83,7 @@ public class KafkaMetadata
     @Override
     public KafkaTableHandle getTableHandle(ConnectorSession session, SchemaTableName schemaTableName)
     {
-        KafkaTopicDescription table = tableDescriptions.get(schemaTableName);
+        KafkaTopicDescription table = tableDescriptions.getTopicDescription(schemaTableName);
         if (table == null) {
             return null;
         }
@@ -91,7 +98,7 @@ public class KafkaMetadata
                 table.getMessage().flatMap(KafkaTopicFieldGroup::getDataSchema));
     }
 
-    private static String getDataFormat(Optional<KafkaTopicFieldGroup> fieldGroup)
+    public static String getDataFormat(Optional<KafkaTopicFieldGroup> fieldGroup)
     {
         return fieldGroup.map(KafkaTopicFieldGroup::getDataFormat).orElse(DummyRowDecoder.NAME);
     }
@@ -106,7 +113,7 @@ public class KafkaMetadata
     public List<SchemaTableName> listTables(ConnectorSession session, Optional<String> schemaName)
     {
         ImmutableList.Builder<SchemaTableName> builder = ImmutableList.builder();
-        for (SchemaTableName tableName : tableDescriptions.keySet()) {
+        for (SchemaTableName tableName : tableDescriptions.getAllTables()) {
             if (schemaName.map(tableName.getSchemaName()::equals).orElse(true)) {
                 builder.add(tableName);
             }
@@ -121,7 +128,7 @@ public class KafkaMetadata
     {
         KafkaTableHandle kafkaTableHandle = convertTableHandle(tableHandle);
 
-        KafkaTopicDescription kafkaTopicDescription = tableDescriptions.get(kafkaTableHandle.toSchemaTableName());
+        KafkaTopicDescription kafkaTopicDescription = tableDescriptions.getTopicDescription(kafkaTableHandle.toSchemaTableName());
         if (kafkaTopicDescription == null) {
             throw new TableNotFoundException(kafkaTableHandle.toSchemaTableName());
         }
@@ -191,7 +198,7 @@ public class KafkaMetadata
     @SuppressWarnings("ValueOfIncrementOrDecrementUsed")
     private ConnectorTableMetadata getTableMetadata(SchemaTableName schemaTableName)
     {
-        KafkaTopicDescription table = tableDescriptions.get(schemaTableName);
+        KafkaTopicDescription table = tableDescriptions.getTopicDescription(schemaTableName);
         if (table == null) {
             throw new TableNotFoundException(schemaTableName);
         }
