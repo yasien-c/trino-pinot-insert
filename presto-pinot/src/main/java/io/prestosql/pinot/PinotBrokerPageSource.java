@@ -30,13 +30,8 @@ import io.prestosql.spi.connector.ConnectorPageSource;
 import io.prestosql.spi.connector.ConnectorSession;
 import io.prestosql.spi.type.BigintType;
 import io.prestosql.spi.type.BooleanType;
-import io.prestosql.spi.type.DecimalType;
-import io.prestosql.spi.type.DoubleType;
 import io.prestosql.spi.type.FixedWidthType;
 import io.prestosql.spi.type.IntegerType;
-import io.prestosql.spi.type.SmallintType;
-import io.prestosql.spi.type.TimestampType;
-import io.prestosql.spi.type.TinyintType;
 import io.prestosql.spi.type.Type;
 import io.prestosql.spi.type.VarcharType;
 
@@ -58,7 +53,6 @@ import static io.prestosql.pinot.PinotErrorCode.PINOT_UNEXPECTED_RESPONSE;
 import static io.prestosql.pinot.PinotErrorCode.PINOT_UNSUPPORTED_COLUMN_TYPE;
 import static io.prestosql.pinot.PinotMetrics.doWithRetries;
 import static java.lang.Boolean.parseBoolean;
-import static java.lang.Long.parseLong;
 import static java.util.Objects.requireNonNull;
 
 public class PinotBrokerPageSource
@@ -100,7 +94,7 @@ public class PinotBrokerPageSource
         this.objectMapper = requireNonNull(objectMapper, "object mapper is null");
     }
 
-    private static Double parseDouble(String value)
+    static Double parseDouble(String value)
     {
         try {
             return Double.valueOf(value);
@@ -134,20 +128,8 @@ public class PinotBrokerPageSource
             else if (type instanceof IntegerType) {
                 blockBuilder.writeInt(parseDouble(value).intValue());
             }
-            else if (type instanceof TinyintType) {
-                blockBuilder.writeByte(parseDouble(value).byteValue());
-            }
-            else if (type instanceof SmallintType) {
-                blockBuilder.writeShort(parseDouble(value).shortValue());
-            }
             else if (type instanceof BooleanType) {
                 type.writeBoolean(blockBuilder, parseBoolean(value));
-            }
-            else if (type instanceof DecimalType || type instanceof DoubleType) {
-                type.writeDouble(blockBuilder, parseDouble(value));
-            }
-            else if (type instanceof TimestampType) {
-                type.writeLong(blockBuilder, parseLong(value));
             }
             else {
                 throw new PinotException(PINOT_UNSUPPORTED_COLUMN_TYPE, Optional.empty(), "type '" + type + "' not supported");

@@ -36,7 +36,6 @@ import static io.prestosql.spi.connector.ConnectorSplitManager.SplitSchedulingSt
 import static io.prestosql.spi.connector.NotPartitionedPartitionHandle.NOT_PARTITIONED;
 import static io.prestosql.spi.type.TimeZoneKey.UTC_KEY;
 import static java.lang.String.format;
-import static java.util.Locale.ENGLISH;
 import static java.util.stream.Collectors.toList;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertFalse;
@@ -114,20 +113,16 @@ public class TestPinotSplitManager
 
     public static ConnectorSession createSessionWithNumSplits(int numSegmentsPerSplit, boolean forbidSegmentQueries, PinotConfig pinotConfig)
     {
-        return new TestingConnectorSession(
-                "user",
-                Optional.of("test"),
-                Optional.empty(),
-                UTC_KEY,
-                ENGLISH,
-                System.currentTimeMillis(),
-                new PinotSessionProperties(pinotConfig).getSessionProperties(),
-                ImmutableMap.of(
-                        PinotSessionProperties.SEGMENTS_PER_SPLIT,
-                        numSegmentsPerSplit,
-                        PinotSessionProperties.FORBID_SEGMENT_QUERIES,
-                        forbidSegmentQueries),
-                new FeaturesConfig().isLegacyTimestamp());
+        return TestingConnectorSession.builder()
+                .setTimeZoneKey(UTC_KEY)
+                .setStartTime(System.currentTimeMillis())
+                .setPropertyMetadata(new PinotSessionProperties(pinotConfig).getSessionProperties())
+                .setPropertyValues(ImmutableMap.<String, Object>builder()
+                        .put(PinotSessionProperties.SEGMENTS_PER_SPLIT, numSegmentsPerSplit)
+                        .put(PinotSessionProperties.FORBID_SEGMENT_QUERIES, forbidSegmentQueries)
+                .build())
+                .setLegacyTimestamp(new FeaturesConfig().isLegacyTimestamp())
+                .build();
     }
 
     private List<PinotSplit> getSplitsHelper(PinotTableHandle pinotTable, int numSegmentsPerSplit, boolean forbidSegmentQueries)

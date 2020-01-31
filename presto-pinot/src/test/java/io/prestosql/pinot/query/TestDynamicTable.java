@@ -28,7 +28,6 @@ import org.testng.annotations.Test;
 
 import java.util.List;
 
-import static io.prestosql.pinot.PinotColumnHandle.PinotColumnType.REGULAR;
 import static io.prestosql.pinot.query.DynamicTableBuilder.OFFLINE_SUFFIX;
 import static io.prestosql.pinot.query.DynamicTableBuilder.REALTIME_SUFFIX;
 import static io.prestosql.pinot.query.DynamicTableBuilder.buildFromPql;
@@ -104,7 +103,7 @@ public class TestDynamicTable
         String tableName = realtimeOnlyTable.getTableName();
         String pql = format("select FlightNum from %s limit 60", tableName.toLowerCase(ENGLISH));
         DynamicTable dynamicTable = buildFromPql(pinotMetadata, new SchemaTableName("default", pql));
-        PinotColumnHandle columnHandle = new PinotColumnHandle("OriginCityName", VARCHAR, REGULAR);
+        PinotColumnHandle columnHandle = new PinotColumnHandle("OriginCityName", VARCHAR);
         TupleDomain<ColumnHandle> tupleDomain = TupleDomain.withColumnDomains(ImmutableMap.<ColumnHandle, Domain>builder()
                 .put(columnHandle,
                         Domain.create(ValueSet.ofRanges(Range.equal(VARCHAR, Slices.utf8Slice("Catfish Paradise"))), false))

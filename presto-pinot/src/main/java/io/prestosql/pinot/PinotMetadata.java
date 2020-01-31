@@ -53,7 +53,6 @@ import static com.google.common.base.Preconditions.checkState;
 import static com.google.common.cache.CacheLoader.asyncReloading;
 import static com.google.common.collect.ImmutableList.toImmutableList;
 import static io.prestosql.pinot.PinotColumn.getPinotColumnsForPinotSchema;
-import static io.prestosql.pinot.PinotColumnHandle.PinotColumnType.REGULAR;
 import static io.prestosql.pinot.query.DynamicTableBuilder.DOUBLE_AGGREGATIONS;
 import static io.prestosql.spi.type.DoubleType.DOUBLE;
 import static java.util.Locale.ENGLISH;
@@ -64,6 +63,7 @@ public class PinotMetadata
 {
     private static final Object ALL_TABLES_CACHE_KEY = new Object();
     private static final String SCHEMA_NAME = "default";
+    private static final String PINOT_COLUMN_NAME_PROPERTY = "pinotColumnName";
 
     private final LoadingCache<String, List<PinotColumn>> pinotTableColumnCache;
     private final LoadingCache<Object, List<String>> allTablesCache;
@@ -165,11 +165,16 @@ public class PinotMetadata
     {
         ImmutableMap.Builder<String, ColumnHandle> columnHandlesBuilder = ImmutableMap.builder();
         for (ColumnMetadata columnMetadata : getColumnsMetadata(tableName)) {
-            PinotColumnMetadata pinotColumnMetadata = (PinotColumnMetadata) columnMetadata;
-            columnHandlesBuilder.put(pinotColumnMetadata.getName(),
-                    new PinotColumnHandle(pinotColumnMetadata.getPinotName(), pinotColumnMetadata.getType(), REGULAR));
+            columnHandlesBuilder.put(columnMetadata.getName(),
+                    new PinotColumnHandle(getPinotColumnName(columnMetadata), columnMetadata.getType()));
         }
         return columnHandlesBuilder.build();
+    }
+
+    private static String getPinotColumnName(ColumnMetadata columnMetadata)
+    {
+        Object pinotColumnName = requireNonNull(columnMetadata.getProperties().get(PINOT_COLUMN_NAME_PROPERTY), "Pinot column name is missing");
+        return pinotColumnName.toString();
     }
 
     @Override
@@ -331,7 +336,7 @@ public class PinotMetadata
         for (AggregationExpression aggregationExpression : dynamicTable.getAggregateColumns()) {
             if (DOUBLE_AGGREGATIONS.contains(aggregationExpression.getAggregationType().toLowerCase(ENGLISH))) {
                 columnHandlesBuilder.put(aggregationExpression.getOutputColumnName().toLowerCase(ENGLISH),
-                        new PinotColumnHandle(aggregationExpression.getOutputColumnName(), DOUBLE, REGULAR));
+                        new PinotColumnHandle(aggregationExpression.getOutputColumnName(), DOUBLE));
             }
             else {
                 PinotColumnHandle columnHandle = (PinotColumnHandle) columnHandles.get(aggregationExpression.getBaseColumnName().toLowerCase(ENGLISH));
@@ -340,8 +345,7 @@ public class PinotMetadata
                 }
                 columnHandlesBuilder.put(aggregationExpression.getOutputColumnName().toLowerCase(ENGLISH),
                         new PinotColumnHandle(aggregationExpression.getOutputColumnName(),
-                                columnHandle.getDataType(),
-                                REGULAR));
+                                columnHandle.getDataType()));
             }
         }
         return columnHandlesBuilder.build();
@@ -356,8 +360,19 @@ public class PinotMetadata
     {
         List<PinotColumn> columns = getPinotColumns(tableName);
         return columns.stream()
-                .map(c -> new PinotColumnMetadata(c.getName(), c.getType()))
+                .map(PinotMetadata::createPinotColumnMetadata)
                 .collect(toImmutableList());
+    }
+
+    private static ColumnMetadata createPinotColumnMetadata(PinotColumn pinotColumn)
+    {
+        return ColumnMetadata.builder()
+                .setName(pinotColumn.getName().toLowerCase(ENGLISH))
+                .setType(pinotColumn.getType())
+                .setProperties(ImmutableMap.<String, Object>builder()
+                        .put(PINOT_COLUMN_NAME_PROPERTY, pinotColumn.getName())
+                        .build())
+                .build();
     }
 
     private List<SchemaTableName> listTables(ConnectorSession session, SchemaTablePrefix prefix)

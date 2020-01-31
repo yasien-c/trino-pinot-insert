@@ -29,35 +29,26 @@ public class PinotColumnHandle
 {
     private final String columnName;
     private final Type dataType;
-    private final PinotColumnType type;
 
     @JsonCreator
     public PinotColumnHandle(
             @JsonProperty("columnName") String columnName,
-            @JsonProperty("dataType") Type dataType,
-            @JsonProperty("type") PinotColumnType type)
+            @JsonProperty("dataType") Type dataType)
     {
         this.columnName = requireNonNull(columnName, "column name is null");
         this.dataType = requireNonNull(dataType, "data type name is null");
-        this.type = requireNonNull(type, "type is null");
     }
 
-    @JsonProperty("columnName")
+    @JsonProperty
     public String getColumnName()
     {
         return columnName;
     }
 
-    @JsonProperty("dataType")
+    @JsonProperty
     public Type getDataType()
     {
         return dataType;
-    }
-
-    @JsonProperty
-    public PinotColumnType getType()
-    {
-        return type;
     }
 
     public ColumnMetadata getColumnMetadata()
@@ -92,13 +83,6 @@ public class PinotColumnHandle
         return toStringHelper(this)
                 .add("columnName", columnName)
                 .add("dataType", dataType)
-                .add("type", type)
                 .toString();
-    }
-
-    public enum PinotColumnType
-    {
-        REGULAR, // refers to the column in table
-        DERIVED, // refers to a derived column that is created after a pushdown expression
     }
 }

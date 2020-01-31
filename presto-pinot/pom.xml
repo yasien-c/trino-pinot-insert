@@ -241,6 +241,10 @@
                     <groupId>com.101tec</groupId>
                     <artifactId>zkclient</artifactId>
                 </exclusion>
+                <exclusion>
+                    <groupId>commons-codec</groupId>
+                    <artifactId>commons-codec</artifactId>
+                </exclusion>
             </exclusions>
         </dependency>
 
@@ -350,6 +354,12 @@
                     <artifactId>validation-api</artifactId>
                 </exclusion>
             </exclusions>
+        </dependency>
+
+        <dependency>
+            <groupId>commons-codec</groupId>
+            <artifactId>commons-codec</artifactId>
+            <version>1.6</version>
         </dependency>
 
         <!-- Testing -->

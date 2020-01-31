@@ -22,17 +22,21 @@ import io.prestosql.pinot.client.PinotScatterGatherQueryClient.ErrorCode;
 import io.prestosql.spi.Page;
 import io.prestosql.spi.PageBuilder;
 import io.prestosql.spi.PrestoException;
+import io.prestosql.spi.block.Block;
 import io.prestosql.spi.block.BlockBuilder;
 import io.prestosql.spi.connector.ConnectorPageSource;
 import io.prestosql.spi.connector.ConnectorSession;
 import io.prestosql.spi.type.Type;
+import io.prestosql.spi.type.VarbinaryType;
+import io.prestosql.spi.type.VarcharType;
+import org.apache.commons.codec.DecoderException;
+import org.apache.commons.codec.binary.Hex;
 import org.apache.pinot.common.response.ServerInstance;
 import org.apache.pinot.common.utils.DataSchema;
 import org.apache.pinot.common.utils.DataSchema.ColumnDataType;
 import org.apache.pinot.common.utils.DataTable;
 
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
@@ -41,11 +45,11 @@ import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
 import static com.google.common.base.Preconditions.checkArgument;
-import static io.airlift.slice.Slices.utf8Slice;
+import static com.google.common.base.Strings.isNullOrEmpty;
 import static io.prestosql.pinot.PinotErrorCode.PINOT_UNSUPPORTED_COLUMN_TYPE;
 import static io.prestosql.spi.type.BigintType.BIGINT;
 import static io.prestosql.spi.type.IntegerType.INTEGER;
-import static io.prestosql.spi.type.VarcharType.VARCHAR;
+import static java.lang.String.format;
 import static java.util.Objects.requireNonNull;
 
 public class PinotSegmentPageSource
@@ -100,7 +104,7 @@ public class PinotSegmentPageSource
             }
         });
         if (!exceptions.isEmpty()) {
-            throw new PinotException(PinotErrorCode.PINOT_EXCEPTION, Optional.of(pql), String.format("Encountered %d pinot exceptions for split %s: %s", exceptions.size(), split, exceptions));
+            throw new PinotException(PinotErrorCode.PINOT_EXCEPTION, Optional.of(pql), format("Encountered %d pinot exceptions for split %s: %s", exceptions.size(), split, exceptions));
         }
     }
 
@@ -215,7 +219,7 @@ public class PinotSegmentPageSource
                             PinotSessionProperties.getPinotRetryCount(session)));
         }
         catch (PinotScatterGatherQueryClient.PinotException pe) {
-            throw new PinotException(PINOT_ERROR_CODE_MAP.getOrDefault(pe.getErrorCode(), PinotErrorCode.PINOT_UNCLASSIFIED_ERROR), Optional.of(pql), String.format("Error when hitting host %s", host), pe);
+            throw new PinotException(PINOT_ERROR_CODE_MAP.getOrDefault(pe.getErrorCode(), PinotErrorCode.PINOT_UNCLASSIFIED_ERROR), Optional.of(pql), format("Error when hitting host %s", host), pe);
         }
     }
 
@@ -255,10 +259,13 @@ public class PinotSegmentPageSource
         else if (javaType.equals(Slice.class)) {
             writeSliceBlock(blockBuilder, columnType, columnIdx);
         }
+        else if (javaType.equals(Block.class)) {
+            writeArrayBlock(blockBuilder, columnType, columnIdx);
+        }
         else {
             throw new PrestoException(
                     PINOT_UNSUPPORTED_COLUMN_TYPE,
-                    String.format(
+                    format(
                             "Failed to write column %s. pinotColumnType %s, javaType %s",
                             columnHandles.get(columnIdx).getColumnName(), pinotColumnType, javaType));
         }
@@ -294,6 +301,15 @@ public class PinotSegmentPageSource
             Slice slice = getSlice(i, columnIndex);
             columnType.writeSlice(blockBuilder, slice, 0, slice.length());
             completedBytes += slice.getBytes().length;
+        }
+    }
+
+    private void writeArrayBlock(BlockBuilder blockBuilder, Type columnType, int columnIndex)
+    {
+        for (int i = 0; i < currentDataTable.getDataTable().getNumberOfRows(); i++) {
+            Block block = getArrayBlock(i, columnIndex);
+            columnType.writeObject(blockBuilder, block);
+            completedBytes += block.getSizeInBytes();
         }
     }
 
@@ -336,34 +352,84 @@ public class PinotSegmentPageSource
         }
     }
 
-    Slice getSlice(int rowIndex, int columnIndex)
+    Block getArrayBlock(int rowIndex, int columnIndex)
     {
-        checkColumnType(columnIndex, VARCHAR);
+        Type prestoType = getType(columnIndex);
+        Type elementType = prestoType.getTypeParameters().get(0);
         DataSchema.ColumnDataType columnType = currentDataTable.getDataTable().getDataSchema().getColumnDataType(columnIndex);
+        BlockBuilder blockBuilder;
         switch (columnType) {
             case INT_ARRAY:
                 int[] intArray = currentDataTable.getDataTable().getIntArray(rowIndex, columnIndex);
-                return utf8Slice(Arrays.toString(intArray));
+                blockBuilder = elementType.createBlockBuilder(null, intArray.length);
+                for (int element : intArray) {
+                    blockBuilder.writeInt(element);
+                }
+                break;
             case LONG_ARRAY:
                 long[] longArray = currentDataTable.getDataTable().getLongArray(rowIndex, columnIndex);
-                return utf8Slice(Arrays.toString(longArray));
+                blockBuilder = elementType.createBlockBuilder(null, longArray.length);
+                for (long element : longArray) {
+                    blockBuilder.writeLong(element);
+                }
+                break;
             case FLOAT_ARRAY:
                 float[] floatArray = currentDataTable.getDataTable().getFloatArray(rowIndex, columnIndex);
-                return utf8Slice(Arrays.toString(floatArray));
+                blockBuilder = elementType.createBlockBuilder(null, floatArray.length);
+                for (double element : floatArray) {
+                    elementType.writeDouble(blockBuilder, element);
+                }
+                break;
             case DOUBLE_ARRAY:
                 double[] doubleArray = currentDataTable.getDataTable().getDoubleArray(rowIndex, columnIndex);
-                return utf8Slice(Arrays.toString(doubleArray));
+                blockBuilder = elementType.createBlockBuilder(null, doubleArray.length);
+                for (double element : doubleArray) {
+                    elementType.writeDouble(blockBuilder, element);
+                }
+                break;
             case STRING_ARRAY:
                 String[] stringArray = currentDataTable.getDataTable().getStringArray(rowIndex, columnIndex);
-                return utf8Slice(Arrays.toString(stringArray));
-            case STRING:
-                String field = currentDataTable.getDataTable().getString(rowIndex, columnIndex);
-                if (field == null || field.isEmpty()) {
-                    return Slices.EMPTY_SLICE;
+                blockBuilder = elementType.createBlockBuilder(null, stringArray.length);
+                for (String element : stringArray) {
+                    Slice slice = getUtf8Slice(element);
+                    elementType.writeSlice(blockBuilder, slice, 0, slice.length());
                 }
-                return Slices.utf8Slice(field);
+                break;
+            default:
+                throw new UnsupportedOperationException(format("Unexpected pinot type '%s'", columnType));
+        }
+        return blockBuilder.build();
+    }
+
+    Slice getSlice(int rowIndex, int columnIndex)
+    {
+        Type prestoType = getType(columnIndex);
+        if (prestoType instanceof VarcharType) {
+            String field = currentDataTable.getDataTable().getString(rowIndex, columnIndex);
+            return getUtf8Slice(field);
+        }
+        else if (prestoType instanceof VarbinaryType) {
+            return Slices.wrappedBuffer(toBytes(currentDataTable.getDataTable().getString(rowIndex, columnIndex)));
         }
         return Slices.EMPTY_SLICE;
+    }
+
+    static byte[] toBytes(String stringValue)
+    {
+        try {
+            return Hex.decodeHex(stringValue.toCharArray());
+        }
+        catch (DecoderException e) {
+            throw new IllegalArgumentException("Value: " + stringValue + " is not Hex encoded", e);
+        }
+    }
+
+    Slice getUtf8Slice(String value)
+    {
+        if (isNullOrEmpty(value)) {
+            return Slices.EMPTY_SLICE;
+        }
+        return Slices.utf8Slice(value);
     }
 
     /**
@@ -389,12 +455,6 @@ public class PinotSegmentPageSource
             }
         }
         return pinotConfig.getEstimatedSizeInBytesForNonNumericColumn();
-    }
-
-    void checkColumnType(int columnIndex, Type expected)
-    {
-        Type actual = getType(columnIndex);
-        checkArgument(actual.equals(expected), "Expected column %s to be type %s but is %s", columnIndex, expected, actual);
     }
 
     Type getTypeForBlock(PinotColumnHandle pinotColumnHandle)

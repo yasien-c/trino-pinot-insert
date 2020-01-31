@@ -227,6 +227,6 @@ public class TestPinotBrokerPageSource
         String dynamicPql = extractPql(dynamicTable, TupleDomain.all(), ImmutableList.of());
         BrokerPqlWithContext dynamicBrokerPql = new BrokerPqlWithContext(dynamicTable.getTableName(), dynamicPql, dynamicTable.getGroupingColumns().size());
 
-        return new PinotBrokerPageSource(new TestingConnectorSession(ImmutableList.of()), dynamicBrokerPql, pinotColumnHandles, new MockPinotClusterInfoFetcher(pinotConfig), objectMapper);
+        return new PinotBrokerPageSource(TestingConnectorSession.SESSION, dynamicBrokerPql, pinotColumnHandles, new MockPinotClusterInfoFetcher(pinotConfig), objectMapper);
     }
 }

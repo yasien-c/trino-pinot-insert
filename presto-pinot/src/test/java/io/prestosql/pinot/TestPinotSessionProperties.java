@@ -35,7 +35,9 @@ public class TestPinotSessionProperties
     {
         PinotConfig pinotConfig = new PinotConfig().setConnectionTimeout(new Duration(15, TimeUnit.SECONDS));
         PinotSessionProperties pinotSessionProperties = new PinotSessionProperties(pinotConfig);
-        ConnectorSession session = new TestingConnectorSession(pinotSessionProperties.getSessionProperties());
+        ConnectorSession session = TestingConnectorSession.builder()
+                .setPropertyMetadata(pinotSessionProperties.getSessionProperties())
+                .build();
         assertEquals(PinotSessionProperties.getConnectionTimeout(session), new Duration(0.25, TimeUnit.MINUTES));
     }
 }

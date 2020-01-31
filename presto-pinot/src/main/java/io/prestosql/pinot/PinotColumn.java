@@ -15,11 +15,13 @@ package io.prestosql.pinot;
 
 import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonProperty;
+import io.prestosql.spi.type.ArrayType;
 import io.prestosql.spi.type.BigintType;
 import io.prestosql.spi.type.BooleanType;
 import io.prestosql.spi.type.DoubleType;
 import io.prestosql.spi.type.IntegerType;
 import io.prestosql.spi.type.Type;
+import io.prestosql.spi.type.VarbinaryType;
 import io.prestosql.spi.type.VarcharType;
 import org.apache.pinot.common.data.FieldSpec;
 import org.apache.pinot.common.data.FieldSpec.DataType;
@@ -98,10 +100,13 @@ public class PinotColumn
 
     public static Type getPrestoTypeFromPinotType(FieldSpec field)
     {
+        Type type = getPrestoTypeFromPinotType(field.getDataType());
         if (field.isSingleValueField()) {
-            return getPrestoTypeFromPinotType(field.getDataType());
+            return type;
         }
-        return VarcharType.VARCHAR;
+        else {
+            return new ArrayType(type);
+        }
     }
 
     public static Type getPrestoTypeFromPinotType(DataType dataType)
@@ -118,6 +123,8 @@ public class PinotColumn
                 return BigintType.BIGINT;
             case STRING:
                 return VarcharType.VARCHAR;
+            case BYTES:
+                return VarbinaryType.VARBINARY;
             default:
                 break;
         }

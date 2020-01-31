@@ -49,7 +49,6 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
-import static com.google.common.base.MoreObjects.toStringHelper;
 import static io.airlift.http.client.StringResponseHandler.createStringResponseHandler;
 import static io.prestosql.pinot.PinotErrorCode.PINOT_INVALID_CONFIGURATION;
 import static io.prestosql.pinot.PinotErrorCode.PINOT_UNABLE_TO_FIND_BROKER;
@@ -71,7 +70,7 @@ public class PinotClusterInfoFetcher
     private static final String ROUTING_TABLE_API_TEMPLATE = "debug/routingTable/%s";
     private static final String TIME_BOUNDARY_API_TEMPLATE = "debug/timeBoundary/%s";
 
-    private final PinotConfig pinotConfig;
+    private final List<String> controllerUrls;
     private final PinotMetrics pinotMetrics;
     private final HttpClient httpClient;
 
@@ -99,7 +98,12 @@ public class PinotClusterInfoFetcher
         this.timeBoundaryJsonCodec = requireNonNull(timeBoundaryJsonCodec, "time boundary json codec is null");
         this.tablesJsonCodec = requireNonNull(tablesJsonCodec, "json codec is null");
 
-        this.pinotConfig = requireNonNull(pinotConfig, "pinotConfig is null");
+        requireNonNull(pinotConfig, "pinotConfig is null");
+        if (pinotConfig.getControllerUrls() == null || pinotConfig.getControllerUrls().isEmpty()) {
+            throw new PinotException(PINOT_INVALID_CONFIGURATION, Optional.empty(), "No pinot controllers specified");
+        }
+
+        this.controllerUrls = pinotConfig.getControllerUrls();
         this.pinotMetrics = requireNonNull(pinotMetrics, "pinotMetrics is null");
         this.httpClient = requireNonNull(httpClient, "httpClient is null");
         this.brokersForTableCache = CacheBuilder.newBuilder()
@@ -118,14 +122,12 @@ public class PinotClusterInfoFetcher
         return jsonCodecBinder;
     }
 
-    public String doHttpActionWithHeaders(
-            Request.Builder requestBuilder,
-            Optional<String> requestBody)
+    public String doHttpActionWithHeaders(Request.Builder requestBuilder, Optional<String> requestBody)
     {
         requestBuilder = requestBuilder
-                .setHeader(HttpHeaders.CONTENT_TYPE, APPLICATION_JSON)
                 .setHeader(HttpHeaders.ACCEPT, APPLICATION_JSON);
         if (requestBody.isPresent()) {
+            requestBuilder.setHeader(HttpHeaders.CONTENT_TYPE, APPLICATION_JSON);
             requestBuilder.setBodyGenerator(StaticBodyGenerator.createStaticBodyGenerator(requestBody.get(), StandardCharsets.UTF_8));
         }
         Request request = requestBuilder.build();
@@ -172,10 +174,6 @@ public class PinotClusterInfoFetcher
 
     private String getControllerUrl()
     {
-        List<String> controllerUrls = pinotConfig.getControllerUrls();
-        if (controllerUrls.isEmpty()) {
-            throw new PinotException(PINOT_INVALID_CONFIGURATION, Optional.empty(), "No pinot controllers specified");
-        }
         return controllerUrls.get(ThreadLocalRandom.current().nextInt(controllerUrls.size()));
     }
 
@@ -364,14 +362,6 @@ public class PinotClusterInfoFetcher
             }
         });
         return routingTableMap.build();
-    }
-
-    @Override
-    public String toString()
-    {
-        return toStringHelper(this)
-                .add("pinotConfig", pinotConfig)
-                .toString();
     }
 
     public static class TimeBoundary

@@ -17,15 +17,13 @@ import io.airlift.testing.EquivalenceTester;
 import org.testng.annotations.Test;
 
 import static io.prestosql.pinot.MetadataUtil.COLUMN_CODEC;
-import static io.prestosql.pinot.PinotColumnHandle.PinotColumnType.DERIVED;
-import static io.prestosql.pinot.PinotColumnHandle.PinotColumnType.REGULAR;
 import static io.prestosql.spi.type.BigintType.BIGINT;
 import static io.prestosql.spi.type.VarcharType.VARCHAR;
 import static org.testng.Assert.assertEquals;
 
 public class TestPinotColumnHandle
 {
-    private final PinotColumnHandle columnHandle = new PinotColumnHandle("columnName", VARCHAR, REGULAR);
+    private final PinotColumnHandle columnHandle = new PinotColumnHandle("columnName", VARCHAR);
 
     @Test
     public void testJsonRoundTrip()
@@ -41,15 +39,15 @@ public class TestPinotColumnHandle
         EquivalenceTester
                 .equivalenceTester()
                 .addEquivalentGroup(
-                        new PinotColumnHandle("columnName", VARCHAR, REGULAR),
-                        new PinotColumnHandle("columnName", VARCHAR, DERIVED),
-                        new PinotColumnHandle("columnName", BIGINT, REGULAR),
-                        new PinotColumnHandle("columnName", BIGINT, DERIVED))
+                        new PinotColumnHandle("columnName", VARCHAR),
+                        new PinotColumnHandle("columnName", VARCHAR),
+                        new PinotColumnHandle("columnName", BIGINT),
+                        new PinotColumnHandle("columnName", BIGINT))
                 .addEquivalentGroup(
-                        new PinotColumnHandle("columnNameX", VARCHAR, REGULAR),
-                        new PinotColumnHandle("columnNameX", VARCHAR, DERIVED),
-                        new PinotColumnHandle("columnNameX", BIGINT, REGULAR),
-                        new PinotColumnHandle("columnNameX", BIGINT, DERIVED))
+                        new PinotColumnHandle("columnNameX", VARCHAR),
+                        new PinotColumnHandle("columnNameX", VARCHAR),
+                        new PinotColumnHandle("columnNameX", BIGINT),
+                        new PinotColumnHandle("columnNameX", BIGINT))
                 .check();
     }
 }
