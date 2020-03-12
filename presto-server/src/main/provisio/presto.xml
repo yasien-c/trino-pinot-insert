@@ -235,4 +235,10 @@
             <unpack />
         </artifact>
     </artifactSet>
+
+    <artifactSet to="plugin/presto-css-functions">
+        <artifact id="${project.groupId}:presto-css-functions:zip:${project.version}">
+            <unpack />
+        </artifact>
+    </artifactSet>
 </runtime>
