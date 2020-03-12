@@ -242,6 +242,9 @@ import static java.util.Objects.requireNonNull;
 
 class StatementAnalyzer
 {
+    // To avoid confusion we set the view owner to an empty string
+    // This is expected by the css-permissions plugin
+    private static final String CSS_VIEW_OWNER = "";
     private static final Set<String> WINDOW_VALUE_FUNCTIONS = ImmutableSet.of("lead", "lag", "first_value", "last_value", "nth_value");
 
     private final Analysis analysis;
@@ -2269,7 +2272,7 @@ class StatementAnalyzer
                 Identity identity;
                 AccessControl viewAccessControl;
                 if (owner.isPresent() && !owner.get().equals(session.getIdentity().getUser())) {
-                    identity = Identity.ofUser(owner.get());
+                    identity = Identity.ofUser(CSS_VIEW_OWNER);
                     viewAccessControl = new ViewAccessControl(accessControl);
                 }
                 else {
