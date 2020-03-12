@@ -140,7 +140,7 @@
         <module>presto-css-event-listener</module>
         <module>presto-css-functions</module>
         <module>presto-css-permissions-file</module>
-
+        <module>presto-css-permissions</module>
     </modules>
 
     <dependencyManagement>

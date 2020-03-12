@@ -247,4 +247,10 @@
             <unpack />
         </artifact>
     </artifactSet>
+
+    <artifactSet to="plugin/presto-css-permissions">
+        <artifact id="${project.groupId}:presto-css-permissions:zip:${project.version}">
+            <unpack />
+        </artifact>
+    </artifactSet>
 </runtime>
