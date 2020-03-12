@@ -1,0 +1,8 @@
+{
+  "roleBindings": [
+    {
+      "roleName": "VIEW_CREATOR",
+      "emails": "jenkins@cloudkitchens.com"
+    }
+  ]
+}

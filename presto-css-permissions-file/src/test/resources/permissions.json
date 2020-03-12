@@ -1,0 +1,70 @@
+{
+  "catalogRules": [
+    {
+      "catalogRegex": "(recruiting|hudi_ingest)",
+      "groupRegex": "Recruiting",
+      "allow": "read-only"
+    },
+    {
+      "groupRegex": "Software Engineering - Infrastructure",
+      "allow": true
+    },
+    {
+      "groupRegex": ".*Engineering.*",
+      "catalogRegex": "(hudi_ingest|consumer_reports_postgres|fos_postgres|promotions_postgres|skusku_postgres|store_availability_postgres|store_config_postgres)",
+      "allow": "read-only"
+    },
+    {
+      "groupRegex": "CONSUMER_REPORTS",
+      "catalogRegex": "(hudi_ingest|consumer_reports_postgres|fos_postgres|promotions_postgres|skusku_postgres|store_availability_postgres|store_config_postgres|tpch)",
+      "allow": "read-only"
+    },
+    {
+      "groupRegex": "Data Science",
+      "catalogRegex": "(hudi_ingest|consumer_reports_postgres|fos_postgres|promotions_postgres|skusku_postgres)",
+      "allow": "read-only"
+    },
+    {
+      "groupRegex": "Data Science",
+      "catalogRegex": "(store_availability_postgres|store_config_postgres|data_science_postgres|data_science_public_postgres)",
+      "allow": "read-only"
+    },
+    {
+      "catalogRegex": "hudi_ingest",
+      "allow": "read-only"
+    }
+  ],
+  "schemaRules": [
+    {
+      "catalog": "hudi_ingest",
+      "rules": [
+        {
+          "groupRegex": "Recruiting",
+          "schemaRegex": "recruiting",
+          "allow": "read-only"
+        },
+        {
+          "schemaRegex": "processed",
+          "allow": "read-only"
+        },
+        {
+          "schemaRegex": ".*",
+          "allow": false
+        }
+      ]
+    },
+    {
+      "catalog": "tpch",
+      "rules": [
+        {
+          "groupRegex": "CONSUMER_REPORTS",
+          "schemaRegex": "tiny",
+          "allow": "read-only"
+        },
+        {
+          "allow": false
+        }
+      ]
+    }
+  ]
+}
