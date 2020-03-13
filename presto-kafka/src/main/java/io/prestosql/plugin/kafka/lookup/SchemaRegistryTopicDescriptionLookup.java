@@ -222,13 +222,25 @@ public class SchemaRegistryTopicDescriptionLookup
         requireNonNull(encodedSchemaTableName, "encodedTableName is null");
         String encodedTableName = encodedSchemaTableName.getTableName();
         List<String> parts = Splitter.on(DELIMITER).trimResults().splitToList(encodedTableName);
-        checkState(parts.size() == 7, "Unexpected format for encodedTableName. Expected format is <tableName>&<keyDataFormat>&<keyDataSchema>&<columnName>=<typeInfo>;...&<valueDataFormat>&<valueDataSchema>&<columnName>=<typeInfo>;...");
+        checkState(parts.size() == 7 || parts.size() == 1, "Unexpected format for encodedTableName. Expected format is <tableName>&<keyDataFormat>&<keyDataSchema>&<columnName>=<typeInfo>;...&<valueDataFormat>&<valueDataSchema>&<columnName>=<typeInfo>;...");
         TopicAndSubjects topicAndSubjects = topicAndSubjectsCache.get().get(parts.get(0));
         checkState(topicAndSubjects != null, "Cannot find topic for encoded table name '%s'", encodedSchemaTableName);
+        if (parts.size() == 1) {
+            return new DecodedTopicInfo(new SchemaTableName(encodedSchemaTableName.getSchemaName(), topicAndSubjects.getTableName()),
+                    topicAndSubjects.getTopic(),
+                    topicAndSubjects.getKeySubject(),
+                    "raw",
+                    Optional.empty(),
+                    "",
+                    topicAndSubjects.getValueSubject(),
+                    "avro-confluent",
+                    Optional.empty(),
+                    "");
+        }
         return new DecodedTopicInfo(new SchemaTableName(encodedSchemaTableName.getSchemaName(), topicAndSubjects.getTableName()),
                 topicAndSubjects.getTopic(),
                 topicAndSubjects.getKeySubject(),
-                parts.get(1),
+                "raw",
                 parseDataSchema(parts.get(2)),
                 parts.get(3),
                 topicAndSubjects.getValueSubject(),
