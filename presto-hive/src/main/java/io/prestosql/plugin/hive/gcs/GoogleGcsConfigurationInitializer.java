@@ -41,6 +41,7 @@ public class GoogleGcsConfigurationInitializer
     public void initializeConfiguration(Configuration config)
     {
         config.set("fs.gs.impl", GoogleHadoopFileSystem.class.getName());
+        config.set("fs.gs.performance.cache.enable", "true");
 
         if (useGcsAccessToken) {
             // use oauth token to authenticate with Google Cloud Storage
