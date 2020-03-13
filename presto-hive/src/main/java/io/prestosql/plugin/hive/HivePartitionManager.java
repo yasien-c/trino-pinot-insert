@@ -59,6 +59,7 @@ import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Predicate;
 
@@ -69,6 +70,7 @@ import static io.prestosql.plugin.hive.HiveErrorCode.HIVE_EXCEEDED_PARTITION_LIM
 import static io.prestosql.plugin.hive.metastore.MetastoreUtil.toPartitionName;
 import static io.prestosql.plugin.hive.util.HiveBucketing.getHiveBucketFilter;
 import static io.prestosql.plugin.hive.util.HiveUtil.parsePartitionValue;
+import static io.prestosql.spi.StandardErrorCode.GENERIC_USER_ERROR;
 import static io.prestosql.spi.StandardErrorCode.NOT_SUPPORTED;
 import static io.prestosql.spi.predicate.TupleDomain.none;
 import static io.prestosql.spi.type.Chars.padSpaces;
@@ -84,6 +86,7 @@ public class HivePartitionManager
     private final int maxPartitions;
     private final boolean assumeCanonicalPartitionKeys;
     private final int domainCompactionThreshold;
+    private final boolean isPartitionedTableFilterRequired;
 
     @Inject
     public HivePartitionManager(HiveConfig hiveConfig)
@@ -92,14 +95,16 @@ public class HivePartitionManager
                 hiveConfig.getDateTimeZone(),
                 hiveConfig.getMaxPartitionsPerScan(),
                 hiveConfig.isAssumeCanonicalPartitionKeys(),
-                hiveConfig.getDomainCompactionThreshold());
+                hiveConfig.getDomainCompactionThreshold(),
+                hiveConfig.isPartitionedTableFilterRequired());
     }
 
     public HivePartitionManager(
             DateTimeZone timeZone,
             int maxPartitions,
             boolean assumeCanonicalPartitionKeys,
-            int domainCompactionThreshold)
+            int domainCompactionThreshold,
+            boolean isPartitionedTableFilterRequired)
     {
         this.timeZone = requireNonNull(timeZone, "timeZone is null");
         checkArgument(maxPartitions >= 1, "maxPartitions must be at least 1");
@@ -107,6 +112,7 @@ public class HivePartitionManager
         this.assumeCanonicalPartitionKeys = assumeCanonicalPartitionKeys;
         checkArgument(domainCompactionThreshold >= 1, "domainCompactionThreshold must be at least 1");
         this.domainCompactionThreshold = domainCompactionThreshold;
+        this.isPartitionedTableFilterRequired = isPartitionedTableFilterRequired;
     }
 
     public HivePartitionResult getPartitions(SemiTransactionalHiveMetastore metastore, HiveIdentity identity, ConnectorTableHandle tableHandle, Constraint constraint)
@@ -284,6 +290,9 @@ public class HivePartitionManager
     private List<String> getFilteredPartitionNames(SemiTransactionalHiveMetastore metastore, HiveIdentity identity, SchemaTableName tableName, List<HiveColumnHandle> partitionKeys, TupleDomain<ColumnHandle> effectivePredicate)
     {
         checkArgument(effectivePredicate.getDomains().isPresent());
+        if (isPartitionedTableFilterRequired) {
+            verifyPartitionKeysFilter(tableName, partitionKeys, effectivePredicate);
+        }
 
         List<String> filter = new ArrayList<>();
         for (HiveColumnHandle partitionKey : partitionKeys) {
@@ -346,6 +355,25 @@ public class HivePartitionManager
         // fetch the partition names
         return metastore.getPartitionNamesByParts(identity, tableName.getSchemaName(), tableName.getTableName(), filter)
                 .orElseThrow(() -> new TableNotFoundException(tableName));
+    }
+
+    private void verifyPartitionKeysFilter(SchemaTableName tableName, List<HiveColumnHandle> partitionKeys, TupleDomain<ColumnHandle> effectivePredicate)
+    {
+        Set<ColumnHandle> effectivePredicateColumns = effectivePredicate.getDomains().orElse(ImmutableMap.of()).keySet();
+        ImmutableList.Builder<String> builder = ImmutableList.builder();
+        for (HiveColumnHandle hiveColumnHandle : partitionKeys) {
+            if (!effectivePredicateColumns.contains(hiveColumnHandle)) {
+                builder.add(hiveColumnHandle.getName());
+            }
+        }
+        List<String> missingPartitionColumns = builder.build();
+        if (!missingPartitionColumns.isEmpty()) {
+            throw new PrestoException(GENERIC_USER_ERROR,
+                    format("Must supply a filter for every partition key in partitioned table %s with partition keys [%s]. Filter is missing partition keys: [%s]",
+                            tableName,
+                            String.join(",", partitionKeys.stream().map(HiveColumnHandle::getName).collect(toImmutableList())),
+                            String.join(",", missingPartitionColumns)));
+        }
     }
 
     public static HivePartition parsePartition(

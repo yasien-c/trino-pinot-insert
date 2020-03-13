@@ -125,6 +125,8 @@ public class HiveConfig
     private Optional<Duration> hiveTransactionHeartbeatInterval = Optional.empty();
     private int hiveTransactionHeartbeatThreads = 5;
 
+    private boolean isPartitionedTableFilterRequired;
+
     public int getMaxInitialSplits()
     {
         return maxInitialSplits;
@@ -876,6 +878,19 @@ public class HiveConfig
     public HiveConfig setHiveTransactionHeartbeatThreads(int hiveTransactionHeartbeatThreads)
     {
         this.hiveTransactionHeartbeatThreads = hiveTransactionHeartbeatThreads;
+        return this;
+    }
+
+    public boolean isPartitionedTableFilterRequired()
+    {
+        return isPartitionedTableFilterRequired;
+    }
+
+    @Config("hive.partitioned-table-filter-required")
+    @ConfigDescription("Require a filter on partitioned tables.")
+    public HiveConfig setPartitionedTableFilterRequired(boolean isPartitionedTableFilterRequired)
+    {
+        this.isPartitionedTableFilterRequired = isPartitionedTableFilterRequired;
         return this;
     }
 }

@@ -86,6 +86,7 @@ public final class HiveSessionProperties
     private static final String TEMPORARY_STAGING_DIRECTORY_ENABLED = "temporary_staging_directory_enabled";
     private static final String TEMPORARY_STAGING_DIRECTORY_PATH = "temporary_staging_directory_path";
     private static final String IGNORE_ABSENT_PARTITIONS = "ignore_absent_partitions";
+    private static final String PARTITIONED_TABLE_FILTER_REQUIRED = "partitioned_table_filter_required";
 
     private final List<PropertyMetadata<?>> sessionProperties;
 
@@ -344,6 +345,11 @@ public final class HiveSessionProperties
                         IGNORE_ABSENT_PARTITIONS,
                         "Ignore partitions when the file system location does not exist rather than failing the query.",
                         hiveConfig.isIgnoreAbsentPartitions(),
+                        false),
+                booleanProperty(
+                        PARTITIONED_TABLE_FILTER_REQUIRED,
+                        "Partitioned table filter required",
+                        hiveConfig.isPartitionedTableFilterRequired(),
                         false));
     }
 
