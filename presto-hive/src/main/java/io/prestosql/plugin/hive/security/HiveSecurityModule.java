@@ -16,6 +16,7 @@ package io.prestosql.plugin.hive.security;
 import com.google.inject.Binder;
 import com.google.inject.Module;
 import io.airlift.configuration.AbstractConfigurationAwareModule;
+import io.prestosql.plugin.base.security.AllowAllAccessControlModule;
 import io.prestosql.plugin.base.security.FileBasedAccessControlModule;
 import io.prestosql.plugin.base.security.ReadOnlySecurityModule;
 
@@ -44,6 +45,10 @@ public class HiveSecurityModule
                         new ReadOnlySecurityModule(),
                         new StaticAccessControlMetadataModule()));
         bindSecurityModule("sql-standard", new SqlStandardSecurityModule());
+        bindSecurityModule("allow-all",
+                installModules(
+                        new AllowAllAccessControlModule(),
+                        new StaticAccessControlMetadataModule()));
     }
 
     private void bindSecurityModule(String name, Module module)
