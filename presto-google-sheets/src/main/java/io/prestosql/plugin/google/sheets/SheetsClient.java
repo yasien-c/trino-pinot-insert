@@ -78,7 +78,7 @@ public class SheetsClient
         requireNonNull(config, "config is null");
         requireNonNull(catalogCodec, "catalogCodec is null");
 
-        this.metadataSheetId = config.getMetadataSheetId();
+        this.metadataSheetId = config.getMetadataSheetId().trim();
         this.credentialsFilePath = config.getCredentialsFilePath();
 
         try {
