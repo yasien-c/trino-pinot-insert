@@ -14,6 +14,8 @@
 package io.prestosql.plugin.kafka.util;
 
 import org.apache.avro.generic.GenericRecord;
+import org.apache.kafka.clients.consumer.ConsumerConfig;
+import org.apache.kafka.clients.consumer.KafkaConsumer;
 import org.apache.kafka.clients.producer.KafkaProducer;
 import org.apache.kafka.clients.producer.ProducerConfig;
 import org.testcontainers.containers.GenericContainer;
@@ -81,6 +83,18 @@ public class TestingKafkaWithSchemaRegistry
         properties.put(ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG, serializerClass);
         properties.put(ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG, "io.confluent.kafka.serializers.KafkaAvroSerializer");
         return new KafkaProducer<>(properties);
+    }
+
+    public <T, U> KafkaConsumer<U, GenericRecord> createKafkaAvroConsumer(Class<T> deserializerClass, Class<U> keyClass)
+    {
+        Properties properties = new Properties();
+        properties.put(SCHEMA_REGISTRY_URL_CONFIG, getSchemaRegistryConnectString());
+        properties.put(ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG, getConnectString());
+        properties.put(ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG, deserializerClass);
+        properties.put(ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG, "io.confluent.kafka.serializers.KafkaAvroDeserializer");
+        properties.put(ConsumerConfig.ENABLE_AUTO_COMMIT_CONFIG, false);
+        properties.put(ConsumerConfig.AUTO_OFFSET_RESET_CONFIG, "earliest");
+        return new KafkaConsumer<>(properties);
     }
 
     public String getSchemaRegistryConnectString()

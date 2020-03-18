@@ -86,9 +86,9 @@ public class TestingCssEventListenerQueryRunner
                 ImmutableMap.of("http-server.http.port", "8080"),
                 ImmutableMap.<String, String>builder()
                         .put("kafka-event-listener.query-log-topic", "query_logs")
-                .put("kafka-event-listener.kafka-nodes", "localhost:32820")
-                .put("kafka-event-listener.schema-registry-url", "http://localhost:32822")
-                .build());
+                        .put("kafka-event-listener.kafka-nodes", "localhost:9092")
+                        .put("kafka-event-listener.schema-registry-url", "http://localhost:8081")
+                        .build());
 
         Thread.sleep(10);
         Logger log = Logger.get(TestingCssEventListenerQueryRunner.class);

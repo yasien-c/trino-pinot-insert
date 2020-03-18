@@ -25,6 +25,7 @@ import java.util.List;
 
 import static org.testng.Assert.assertThrows;
 
+@Test(groups = "test-css")
 public class TestPermissions
 {
     private static SystemSecurityContext user(String name)

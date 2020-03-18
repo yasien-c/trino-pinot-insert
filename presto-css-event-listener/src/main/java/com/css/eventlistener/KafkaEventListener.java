@@ -13,6 +13,7 @@
  */
 package com.css.eventlistener;
 
+import com.google.common.annotations.VisibleForTesting;
 import com.google.common.collect.ImmutableMap;
 import com.google.inject.Inject;
 import io.airlift.json.JsonCodec;
@@ -117,6 +118,7 @@ public class KafkaEventListener
             .name("operator_summaries").type().optional().array().items().stringType()
             .name("plan").type().optional().stringType()
             .name("plan_node_stats").type().optional().stringType()
+            .name("create_time_epoch_seconds").type().optional().longType()
             .endRecord();
 
     @Inject
@@ -153,6 +155,7 @@ public class KafkaEventListener
                 .set("create_time", event.getCreateTime().atZone(ZONE_ID).toString())
                 .set("resource_group_name", context.getResourceGroupId().map(resourceGroupId -> LIST_STRING_CODEC.toJson(resourceGroupId.getSegments())).orElse(""))
                 .set("session_properties_json", SESSION_PROPERTIES_CODEC.toJson(context.getSessionProperties()))
+                .set("create_time_epoch_seconds", event.getCreateTime().getEpochSecond())
                 .build());
     }
 
@@ -227,6 +230,7 @@ public class KafkaEventListener
                 .set("operator_summaries", statistics.getOperatorSummaries())
                 .set("plan", metadata.getPlan().orElse(""))
                 .set("plan_node_stats", statistics.getPlanNodeStatsAndCosts().orElse(""))
+                .set("create_time_epoch_seconds", event.getCreateTime().getEpochSecond())
                 .build());
     }
 
@@ -247,7 +251,8 @@ public class KafkaEventListener
         return Optional.empty();
     }
 
-    private enum EventType
+    @VisibleForTesting
+    enum EventType
     {
         QUERY_CREATED,
         QUERY_COMPLETED,

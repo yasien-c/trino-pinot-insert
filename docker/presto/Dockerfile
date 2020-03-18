@@ -26,7 +26,7 @@ COPY . /tmp/presto
 # due to not being in the "test-css" group.
 RUN cd /tmp/presto && \
     mvn package -DskipTests && \
-    mvn test -Dgroups=test-css -pl presto-css-functions,presto-hive
+    mvn test -Dgroups=test-css -pl presto-css-functions,presto-hive,presto-css-event-listener
 
 FROM google/cloud-sdk:latest as hudi_libs
 ARG KEY_FILE
