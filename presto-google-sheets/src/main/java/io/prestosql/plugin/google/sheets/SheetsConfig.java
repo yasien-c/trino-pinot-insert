@@ -28,6 +28,8 @@ public class SheetsConfig
     private String credentialsFilePath;
     private String metadataSheetId;
     private int sheetsDataMaxCacheSize = 1000;
+    private Duration sheetsConnectTimeout = new Duration(10, TimeUnit.SECONDS);
+    private Duration sheetsReadTimeout = new Duration(2, TimeUnit.MINUTES);
     private Duration sheetsDataExpireAfterWrite = new Duration(5, TimeUnit.MINUTES);
 
     @NotNull
@@ -62,6 +64,34 @@ public class SheetsConfig
     public int getSheetsDataMaxCacheSize()
     {
         return sheetsDataMaxCacheSize;
+    }
+
+    @Config("sheets-read-timeout")
+    @ConfigDescription("Sheets data expire after write duration")
+    public SheetsConfig setSheetsReadTimeout(Duration sheetsReadTimeout)
+    {
+        this.sheetsReadTimeout = sheetsReadTimeout;
+        return this;
+    }
+
+    @MinDuration("1s")
+    public Duration getSheetsReadTimeout()
+    {
+        return sheetsReadTimeout;
+    }
+
+    @Config("sheets-connection-timeout")
+    @ConfigDescription("Sheets data expire after write duration")
+    public SheetsConfig setSheetsConnectTimeout(Duration sheetsConnectTimeout)
+    {
+        this.sheetsConnectTimeout = sheetsConnectTimeout;
+        return this;
+    }
+
+    @MinDuration("1s")
+    public Duration getSheetsConnectTimeout()
+    {
+        return sheetsConnectTimeout;
     }
 
     @Config("sheets-data-max-cache-size")

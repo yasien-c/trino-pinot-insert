@@ -15,6 +15,7 @@ package io.prestosql.plugin.google.sheets;
 
 import com.google.api.client.auth.oauth2.Credential;
 import com.google.api.client.googleapis.auth.oauth2.GoogleCredential;
+import com.google.api.client.http.HttpRequestInitializer;
 import com.google.api.client.json.JsonFactory;
 import com.google.api.client.json.jackson2.JacksonFactory;
 import com.google.api.services.sheets.v4.Sheets;
@@ -82,7 +83,11 @@ public class SheetsClient
         this.credentialsFilePath = config.getCredentialsFilePath();
 
         try {
-            this.sheetsService = new Sheets.Builder(newTrustedTransport(), JSON_FACTORY, getCredentials()).setApplicationName(APPLICATION_NAME).build();
+            this.sheetsService = new Sheets.Builder(newTrustedTransport(), JSON_FACTORY,
+                    setTimeout(getCredentials(),
+                            (int) config.getSheetsReadTimeout().toMillis(),
+                            (int) config.getSheetsConnectTimeout().toMillis()))
+                    .setApplicationName(APPLICATION_NAME).build();
         }
         catch (GeneralSecurityException | IOException e) {
             throw new PrestoException(SHEETS_BAD_CREDENTIALS_ERROR, e);
@@ -197,6 +202,15 @@ public class SheetsClient
         catch (IOException e) {
             throw new PrestoException(SHEETS_BAD_CREDENTIALS_ERROR, e);
         }
+    }
+
+    private HttpRequestInitializer setTimeout(HttpRequestInitializer initializer, int readTimeout, int connectTimeout)
+    {
+        return request -> {
+            initializer.initialize(request);
+            request.setReadTimeout(readTimeout);
+            request.setConnectTimeout(connectTimeout);
+        };
     }
 
     private List<List<Object>> readAllValuesFromSheetExpression(String sheetExpression)
