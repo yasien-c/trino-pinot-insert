@@ -109,7 +109,9 @@ public class SchemaRegistryTopicDescriptionLookup
         try {
             Map<String, Set<String>> topicToSubjects = new HashMap<>();
             for (String subject : schemaRegistryClient.getAllSubjects()) {
-                topicToSubjects.computeIfAbsent(extractTopicFromSubject(subject), k -> new HashSet<>()).add(subject);
+                if (isValidSubject(subject)) {
+                    topicToSubjects.computeIfAbsent(extractTopicFromSubject(subject), k -> new HashSet<>()).add(subject);
+                }
             }
             ImmutableMap.Builder<String, TopicAndSubjects> topicSubjectsCacheBuilder = ImmutableMap.builder();
             for (Map.Entry<String, Set<String>> entry : topicToSubjects.entrySet()) {
@@ -146,6 +148,7 @@ public class SchemaRegistryTopicDescriptionLookup
         try {
             ImmutableSet.Builder<SchemaTableName> schemaTableNameBuilder = ImmutableSet.builder();
             schemaRegistryClient.getAllSubjects().stream()
+                    .filter(SchemaRegistryTopicDescriptionLookup::isValidSubject)
                     .forEach(subject -> schemaTableNameBuilder.add(new SchemaTableName(defaultSchema, extractTopicFromSubject(subject))));
             return schemaTableNameBuilder.build();
         }
@@ -155,6 +158,12 @@ public class SchemaRegistryTopicDescriptionLookup
         catch (RestClientException e) {
             throw new RuntimeException(e);
         }
+    }
+
+    private static boolean isValidSubject(String subject)
+    {
+        requireNonNull(subject, "subject is null");
+        return subject.endsWith(VALUE_SUFFIX) || subject.endsWith(KEY_SUFFIX);
     }
 
     private static String extractTopicFromSubject(String subject)
