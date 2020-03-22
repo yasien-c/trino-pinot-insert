@@ -15,8 +15,10 @@ package io.prestosql.plugin.kafka;
 
 import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonProperty;
+import io.prestosql.spi.connector.ColumnHandle;
 import io.prestosql.spi.connector.ConnectorTableHandle;
 import io.prestosql.spi.connector.SchemaTableName;
+import io.prestosql.spi.predicate.TupleDomain;
 
 import java.util.Objects;
 import java.util.Optional;
@@ -47,6 +49,7 @@ public final class KafkaTableHandle
     private final String messageDataFormat;
     private final Optional<String> keyDataSchemaLocation;
     private final Optional<String> messageDataSchemaLocation;
+    private final TupleDomain<ColumnHandle> constraint;
 
     @JsonCreator
     public KafkaTableHandle(
@@ -56,7 +59,8 @@ public final class KafkaTableHandle
             @JsonProperty("keyDataFormat") String keyDataFormat,
             @JsonProperty("messageDataFormat") String messageDataFormat,
             @JsonProperty("keyDataSchemaLocation") Optional<String> keyDataSchemaLocation,
-            @JsonProperty("messageDataSchemaLocation") Optional<String> messageDataSchemaLocation)
+            @JsonProperty("messageDataSchemaLocation") Optional<String> messageDataSchemaLocation,
+            @JsonProperty("constraint") TupleDomain<ColumnHandle> constraint)
     {
         this.schemaName = requireNonNull(schemaName, "schemaName is null");
         this.tableName = requireNonNull(tableName, "tableName is null");
@@ -65,6 +69,7 @@ public final class KafkaTableHandle
         this.messageDataFormat = requireNonNull(messageDataFormat, "messageDataFormat is null");
         this.keyDataSchemaLocation = keyDataSchemaLocation;
         this.messageDataSchemaLocation = messageDataSchemaLocation;
+        this.constraint = requireNonNull(constraint, "constraint is null");
     }
 
     @JsonProperty
@@ -114,6 +119,12 @@ public final class KafkaTableHandle
         return new SchemaTableName(schemaName, tableName);
     }
 
+    @JsonProperty
+    public TupleDomain<ColumnHandle> getConstraint()
+    {
+        return constraint;
+    }
+
     @Override
     public int hashCode()
     {
@@ -151,6 +162,7 @@ public final class KafkaTableHandle
                 .add("messageDataFormat", messageDataFormat)
                 .add("keyDataSchemaLocation", keyDataSchemaLocation)
                 .add("messageDataSchemaLocation", messageDataSchemaLocation)
+                .add("constraint", constraint)
                 .toString();
     }
 }

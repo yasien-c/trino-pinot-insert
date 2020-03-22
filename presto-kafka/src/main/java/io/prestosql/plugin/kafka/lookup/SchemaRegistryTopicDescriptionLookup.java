@@ -231,7 +231,7 @@ public class SchemaRegistryTopicDescriptionLookup
         requireNonNull(encodedSchemaTableName, "encodedTableName is null");
         String encodedTableName = encodedSchemaTableName.getTableName();
         List<String> parts = Splitter.on(DELIMITER).trimResults().splitToList(encodedTableName);
-        checkState(parts.size() == 7 || parts.size() == 1, "Unexpected format for encodedTableName. Expected format is <tableName>&<keyDataFormat>&<keyDataSchema>&<columnName>=<typeInfo>;...&<valueDataFormat>&<valueDataSchema>&<columnName>=<typeInfo>;...");
+        checkState(parts.size() == 7 || parts.size() == 1 || parts.size() == 2, "Unexpected format for encodedTableName. Expected format is <tableName>&<keyDataFormat>&<keyDataSchema>&<columnName>=<typeInfo>;...&<valueDataFormat>&<valueDataSchema>&<columnName>=<typeInfo>;...");
         TopicAndSubjects topicAndSubjects = topicAndSubjectsCache.get().get(parts.get(0));
         checkState(topicAndSubjects != null, "Cannot find topic for encoded table name '%s'", encodedSchemaTableName);
         if (parts.size() == 1) {
@@ -240,7 +240,21 @@ public class SchemaRegistryTopicDescriptionLookup
                     topicAndSubjects.getKeySubject(),
                     "raw",
                     Optional.empty(),
-                    "",
+                    "key_col=varchar",
+                    topicAndSubjects.getValueSubject(),
+                    "avro-confluent",
+                    Optional.empty(),
+                    "");
+        }
+        else if (parts.size() == 2) {
+            // Check kafka connector docs on prestosql.io for details about dataformat
+            // ex. To select from a topic with integer keycolumn: SELECT * FROM "table&key_col=bigint#dataformat=int"
+            return new DecodedTopicInfo(new SchemaTableName(encodedSchemaTableName.getSchemaName(), topicAndSubjects.getTableName()),
+                    topicAndSubjects.getTopic(),
+                    topicAndSubjects.getKeySubject(),
+                    "raw",
+                    Optional.empty(),
+                    parts.get(1),
                     topicAndSubjects.getValueSubject(),
                     "avro-confluent",
                     Optional.empty(),

@@ -60,7 +60,7 @@ public abstract class AbstractTestKafkaWithSchemaRegistry
         assertQuery("SELECT f5.field1, ELEMENT_AT(f5.field3, 2) FROM " + schemaTableName + " WHERE f2 = 9", "VALUES ('subfield9', 65)");
     }
 
-    protected void produceRecords(TestingKafkaWithSchemaRegistry testingKafkaWithSchemaRegistry)
+    static void produceRecords(TestingKafkaWithSchemaRegistry testingKafkaWithSchemaRegistry)
     {
         KafkaProducer<String, GenericRecord> producer = testingKafkaWithSchemaRegistry.createKafkaAvroProducer();
         Schema schemaV1 = SchemaBuilder.record("myrecord")

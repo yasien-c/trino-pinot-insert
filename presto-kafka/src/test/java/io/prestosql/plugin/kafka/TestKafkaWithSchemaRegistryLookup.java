@@ -15,7 +15,9 @@ package io.prestosql.plugin.kafka;
 
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
+import io.airlift.log.Logger;
 import io.prestosql.plugin.kafka.util.TestingKafkaWithSchemaRegistry;
+import io.prestosql.testing.DistributedQueryRunner;
 import io.prestosql.testing.QueryRunner;
 import org.apache.avro.Schema;
 import org.apache.avro.SchemaBuilder;
@@ -34,6 +36,8 @@ public class TestKafkaWithSchemaRegistryLookup
         extends AbstractTestKafkaWithSchemaRegistry
 {
     private static final String TABLE_NAME = "default.\"bar&raw&&key_col=bigint#dataformat=int&avro-confluent&&\"";
+
+    private static final String SHORTHAND_TABLE_NAME = "default.\"bar&key_col=bigint#dataformat=int\"";
 
     private TestingKafkaWithSchemaRegistry testingKafkaWithSchemaRegistry;
 
@@ -75,9 +79,12 @@ public class TestKafkaWithSchemaRegistryLookup
         assertQuery("SELECT COUNT(*) FROM " + TABLE_NAME + " WHERE key_col > 3", "VALUES (6)");
         assertQuery("SELECT MAX(key_col) FROM " + TABLE_NAME, "VALUES (9)");
         assertQuery("SELECT MAX_BY(f1, key_col) FROM " + TABLE_NAME, "VALUES ('value9')");
+        assertQuery("SELECT f1 FROM " + TABLE_NAME + " WHERE _partition_id = 0 AND _partition_offset in (7, 8)", "VALUES ('value7'), ('value8')");
+        assertQuery("SELECT f1 FROM " + TABLE_NAME + " WHERE _partition_id IN (0, 3) AND _partition_offset > 8", "VALUES ('value9')");
+        assertQuery("SELECT key_col FROM " + SHORTHAND_TABLE_NAME + " WHERE _partition_offset = 9", "VALUES(9)");
     }
 
-    private void produceRecordsWithRawKeyMapping(TestingKafkaWithSchemaRegistry testingKafkaWithSchemaRegistry)
+    private static void produceRecordsWithRawKeyMapping(TestingKafkaWithSchemaRegistry testingKafkaWithSchemaRegistry)
     {
         KafkaProducer<Integer, GenericRecord> producer = testingKafkaWithSchemaRegistry.createKafkaAvroProducer(IntegerSerializer.class, Integer.class);
         Schema schema = SchemaBuilder.record("myrecord")
@@ -99,5 +106,24 @@ public class TestKafkaWithSchemaRegistryLookup
             producer.flush();
             producer.close();
         }
+    }
+
+    public static void main(String[] args)
+            throws Exception
+    {
+        TestingKafkaWithSchemaRegistry testingKafkaWithSchemaRegistry = new TestingKafkaWithSchemaRegistry();
+        DistributedQueryRunner queryRunner = createKafkaQueryRunner(testingKafkaWithSchemaRegistry,
+                ImmutableMap.of("http-server.http.port", "8080"),
+                ImmutableMap.<String, String>builder()
+                        .put("kafka.hide-internal-columns", "false")
+                        .build());
+        testingKafkaWithSchemaRegistry.createTopics("foo");
+        produceRecords(testingKafkaWithSchemaRegistry);
+        testingKafkaWithSchemaRegistry.createTopics("bar");
+        produceRecordsWithRawKeyMapping(testingKafkaWithSchemaRegistry);
+        Thread.sleep(10);
+        Logger log = Logger.get(TestKafkaWithSchemaRegistryLookup.class);
+        log.info("======== SERVER STARTED ========");
+        log.info("\n====\n%s\n====", queryRunner.getCoordinator().getBaseUrl());
     }
 }
