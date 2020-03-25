@@ -141,10 +141,7 @@ public class KafkaSplitManager
                 }
             }
             offsetsDomain = normalizeDomain(offsetsDomain);
-            return offsetsDomain.intersect(
-                    Domain.create(
-                            ValueSet.ofRanges(
-                                    io.prestosql.spi.predicate.Range.range(BIGINT, offsets.getBegin(), true, offsets.getEnd(), false)), false))
+            return offsetsDomain.intersect(toDomain(offsets))
                     .getValues()
                     .getRanges()
                     .getOrderedRanges().stream().map(this::toRange)
@@ -153,6 +150,17 @@ public class KafkaSplitManager
         else {
             return ImmutableList.of(offsets);
         }
+    }
+
+    // For an empty partition return Domain.none
+    private static Domain toDomain(Range range)
+    {
+        if (range.getBegin() >= range.getEnd()) {
+            return Domain.none(BIGINT);
+        }
+        return Domain.create(
+                ValueSet.ofRanges(
+                        io.prestosql.spi.predicate.Range.range(BIGINT, range.getBegin(), true, range.getEnd(), false)), false);
     }
 
     // Transform discrete value domains into range sets

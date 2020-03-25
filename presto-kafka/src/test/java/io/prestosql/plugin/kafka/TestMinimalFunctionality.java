@@ -70,7 +70,7 @@ public class TestMinimalFunctionality
     @Test
     public void testTopicHasData()
     {
-        assertQuery("SELECT count(*) FROM default." + topicName, "VALUES 0");
+        assertQuery("SELECT count(*) FROM default." + topicName + " WHERE _partition_offset >= 0", "VALUES 0");
 
         createMessages(topicName);
 
