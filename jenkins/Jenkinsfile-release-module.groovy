@@ -20,16 +20,19 @@ pipeline {
     stage("Build Presto Deployer Image") {
       environment {
         IMAGE_VERSION = "${VERSION}"
+        KEY_FILE = credentials("css-data-jenkins")
       }
 
       steps {
+        sh "gcloud auth activate-service-account --key-file $KEY_FILE"
+        sh "gcloud config set project css-data-warehouse"
+        sh "gcloud auth configure-docker"
+
         sh """docker build . -f docker/presto-deploy/Dockerfile \
-              -t docker.artifactory.cloudkitchens.internal/presto-deploy:${IMAGE_VERSION}
+              -t gcr.io/css-data-warehouse/presto-deploy:${IMAGE_VERSION}
            """
 
-        withDockerRegistry([credentialsId: "artifactory-jenkins-credentials", url: "https://docker.artifactory.cloudkitchens.internal"]) {
-          sh "docker push docker.artifactory.cloudkitchens.internal/presto-deploy:${IMAGE_VERSION}"
-        }
+        sh "docker push gcr.io/css-data-warehouse/presto-deploy:${IMAGE_VERSION}"
       }
     }
 
@@ -40,12 +43,16 @@ pipeline {
         HUDI_BUCKET = "css-data-warehouse-hudi-lib"
         HUDI_DIR = "jar"
         HUDI_VERSION = "0.5.0-SNAPSHOT"
-        HUDI_TAG = "6afb9783a6bb"
+        HUDI_TAG = "27f26b014235"
         JMX_EXPORTER_VERSION = "0.12.0"
         KEY_FILE = credentials("css-data-jenkins")
       }
 
       steps {
+        sh "gcloud auth activate-service-account --key-file $KEY_FILE"
+        sh "gcloud config set project css-data-warehouse"
+        sh "gcloud auth configure-docker"
+
         sh "cp $KEY_FILE key.json"
         sh """docker build . -f docker/presto/Dockerfile \
                     --build-arg PRESTO_VERSION=$PRESTO_VERSION \
@@ -55,11 +62,9 @@ pipeline {
                     --build-arg HUDI_DIR=${HUDI_DIR} \
                     --build-arg HUDI_VERSION=${HUDI_VERSION} \
                     --build-arg HUDI_TAG=${HUDI_TAG} \
-                    -t docker.artifactory.cloudkitchens.internal/presto:${IMAGE_VERSION}
+                    -t gcr.io/css-data-warehouse/presto:${IMAGE_VERSION}
                    """
-        withDockerRegistry([credentialsId: "artifactory-jenkins-credentials", url: "https://docker.artifactory.cloudkitchens.internal"]) {
-          sh "docker push docker.artifactory.cloudkitchens.internal/presto:${IMAGE_VERSION}"
-        }
+        sh "docker push gcr.io/css-data-warehouse/presto:${IMAGE_VERSION}"
       }
     }
   }

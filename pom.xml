@@ -51,7 +51,7 @@
         <dep.jdbi3.version>3.4.0</dep.jdbi3.version>
         <dep.drift.version>1.14</dep.drift.version>
         <dep.tempto.version>173</dep.tempto.version>
-        <dep.gcs.version>2.0.0</dep.gcs.version>
+        <dep.gcs.version>2.1.1</dep.gcs.version>
         <dep.errorprone.version>2.3.3</dep.errorprone.version>
         <dep.confluent.version>5.2.1</dep.confluent.version>
         <!--
@@ -948,6 +948,14 @@
                         <groupId>joda-time</groupId>
                         <artifactId>joda-time</artifactId>
                     </exclusion>
+                    <exclusion>
+                        <groupId>org.apache.httpcomponents</groupId>
+                        <artifactId>httpclient</artifactId>
+                    </exclusion>
+                    <exclusion>
+                        <groupId>org.apache.httpcomponents</groupId>
+                        <artifactId>httpcore</artifactId>
+                    </exclusion>
                 </exclusions>
             </dependency>
 
@@ -1054,6 +1062,18 @@
             </dependency>
 
             <dependency>
+                <groupId>org.apache.httpcomponents</groupId>
+                <artifactId>httpclient</artifactId>
+                <version>4.5.11</version>
+            </dependency>
+
+            <dependency>
+                <groupId>org.apache.httpcomponents</groupId>
+                <artifactId>httpcore</artifactId>
+                <version>4.4.13</version>
+            </dependency>
+
+            <dependency>
                 <groupId>io.airlift</groupId>
                 <artifactId>testing-mysql-server</artifactId>
                 <version>8.0.12-2</version>
@@ -1069,6 +1089,20 @@
                 <groupId>com.google.cloud.bigdataoss</groupId>
                 <artifactId>gcsio</artifactId>
                 <version>${dep.gcs.version}</version>
+                <exclusions>
+                    <exclusion>
+                        <groupId>org.apache.components</groupId>
+                        <artifactId>httpcient</artifactId>
+                    </exclusion>
+                    <exclusion>
+                        <groupId>org.apache.components</groupId>
+                        <artifactId>httpcore</artifactId>
+                    </exclusion>
+                    <exclusion>
+                        <groupId>commons-logging</groupId>
+                        <artifactId>commons-logging</artifactId>
+                    </exclusion>
+                </exclusions>
             </dependency>
 
             <dependency>
@@ -1091,6 +1125,12 @@
                         <artifactId>slf4j-log4j12</artifactId>
                     </exclusion>
                 </exclusions>
+            </dependency>
+
+            <dependency>
+                <groupId>com.google.http-client</groupId>
+                <artifactId>google-http-client</artifactId>
+                <version>1.34.1</version>
             </dependency>
 
             <dependency>
@@ -1376,6 +1416,14 @@
                     <artifactId>maven-release-plugin</artifactId>
                     <configuration>
                         <preparationGoals>clean verify -DskipTests</preparationGoals>
+                    </configuration>
+                </plugin>
+
+                <plugin>
+                    <groupId>org.basepom.maven</groupId>
+                    <artifactId>duplicate-finder-maven-plugin</artifactId>
+                    <configuration>
+                        <ignoredClassPatterns>com.google.common.flogger.backend.system.DefaultPlatform</ignoredClassPatterns>
                     </configuration>
                 </plugin>
             </plugins>

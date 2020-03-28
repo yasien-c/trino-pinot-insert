@@ -2,7 +2,7 @@
 ARG HUDI_VERSION
 ARG PRESTO_VERSION
 
-FROM maven:3.6.1 as presto_builder
+FROM maven:3.6.2 as presto_builder
 ARG PRESTO_VERSION
 ARG JMX_EXPORTER_VERSION
 
