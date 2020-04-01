@@ -20,6 +20,7 @@ import com.google.api.client.json.JsonFactory;
 import com.google.api.client.json.jackson2.JacksonFactory;
 import com.google.api.services.sheets.v4.Sheets;
 import com.google.api.services.sheets.v4.SheetsScopes;
+import com.google.common.annotations.VisibleForTesting;
 import com.google.common.cache.CacheBuilder;
 import com.google.common.cache.CacheLoader;
 import com.google.common.cache.LoadingCache;
@@ -44,6 +45,8 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 import static com.google.api.client.googleapis.javanet.GoogleNetHttpTransport.newTrustedTransport;
 import static com.google.common.base.Throwables.throwIfInstanceOf;
@@ -52,6 +55,7 @@ import static io.prestosql.plugin.google.sheets.SheetsErrorCode.SHEETS_BAD_CREDE
 import static io.prestosql.plugin.google.sheets.SheetsErrorCode.SHEETS_METASTORE_ERROR;
 import static io.prestosql.plugin.google.sheets.SheetsErrorCode.SHEETS_TABLE_LOAD_ERROR;
 import static io.prestosql.plugin.google.sheets.SheetsErrorCode.SHEETS_UNKNOWN_TABLE_ERROR;
+import static java.lang.String.format;
 import static java.util.Locale.ENGLISH;
 import static java.util.Objects.requireNonNull;
 import static java.util.concurrent.TimeUnit.MILLISECONDS;
@@ -63,10 +67,17 @@ public class SheetsClient
     private static final String APPLICATION_NAME = "presto google sheets integration";
     private static final JsonFactory JSON_FACTORY = JacksonFactory.getDefaultInstance();
 
+    @VisibleForTesting
+    static final Pattern SHEET_REGEX = Pattern.compile("(?<sheetId>.*?)(?:#(?:(?<tab>[^!].*?))?(?:!(?<range>(?<begin>\\$\\d+):\\$\\d+))?)?$");
+
+    @VisibleForTesting
+    static final String HEADER_RANGE = "$1:$1";
+
     private static final List<String> SCOPES = ImmutableList.of(SheetsScopes.SPREADSHEETS_READONLY);
 
     private final LoadingCache<String, Optional<String>> tableSheetMappingCache;
     private final LoadingCache<String, List<List<Object>>> sheetDataCache;
+    private final LoadingCache<String, List<Object>> sheetMetadataCache;
 
     private final String metadataSheetId;
     private final String credentialsFilePath;
@@ -111,16 +122,16 @@ public class SheetsClient
                 });
 
         this.sheetDataCache = newCacheBuilder(expiresAfterWriteMillis, maxCacheSize).build(from(this::readAllValuesFromSheetExpression));
+        this.sheetMetadataCache = newCacheBuilder(expiresAfterWriteMillis, maxCacheSize).build(from(this::readHeaderFromSheetExpression));
     }
 
     public Optional<SheetsTable> getTable(String tableName)
     {
-        List<List<Object>> values = readAllValues(tableName);
-        if (values.size() > 0) {
+        List<Object> header = readHeader(tableName);
+        if (!header.isEmpty()) {
             ImmutableList.Builder<SheetsColumn> columns = ImmutableList.builder();
             Set<String> columnNames = new HashSet<>();
             // Assuming 1st line is always header
-            List<Object> header = values.get(0);
             int count = 0;
             for (Object column : header) {
                 String columnValue = column.toString().toLowerCase(ENGLISH);
@@ -131,8 +142,19 @@ public class SheetsClient
                 columnNames.add(columnValue);
                 columns.add(new SheetsColumn(columnValue, VarcharType.VARCHAR));
             }
-            List<List<Object>> dataValues = values.subList(1, values.size()); // removing header info
-            return Optional.of(new SheetsTable(tableName, columns.build(), dataValues));
+            return Optional.of(new SheetsTable(tableName, columns.build()));
+        }
+        return Optional.empty();
+    }
+
+    public Optional<List<List<Object>>> getData(String tableName)
+    {
+        List<List<Object>> values = readAllValues(tableName);
+        if (!values.isEmpty()) {
+            if (values.size() > 1) {
+                return Optional.of(values.subList(1, values.size())); // removing header info
+            }
+            return Optional.of(ImmutableList.of());
         }
         return Optional.empty();
     }
@@ -155,7 +177,7 @@ public class SheetsClient
         }
     }
 
-    public List<List<Object>> readAllValues(String tableName)
+    private List<List<Object>> readAllValues(String tableName)
     {
         try {
             Optional<String> sheetExpression = tableSheetMappingCache.getUnchecked(tableName);
@@ -163,6 +185,21 @@ public class SheetsClient
                 throw new PrestoException(SHEETS_UNKNOWN_TABLE_ERROR, "Sheet expression not found for table " + tableName);
             }
             return sheetDataCache.getUnchecked(sheetExpression.get());
+        }
+        catch (UncheckedExecutionException e) {
+            throwIfInstanceOf(e.getCause(), PrestoException.class);
+            throw new PrestoException(SHEETS_TABLE_LOAD_ERROR, "Error loading data for table: " + tableName, e);
+        }
+    }
+
+    private List<Object> readHeader(String tableName)
+    {
+        try {
+            Optional<String> sheetExpression = tableSheetMappingCache.getUnchecked(tableName);
+            if (!sheetExpression.isPresent()) {
+                throw new PrestoException(SHEETS_UNKNOWN_TABLE_ERROR, "Sheet expression not found for table " + tableName);
+            }
+            return sheetMetadataCache.getUnchecked(sheetExpression.get());
         }
         catch (UncheckedExecutionException e) {
             throwIfInstanceOf(e.getCause(), PrestoException.class);
@@ -229,6 +266,34 @@ public class SheetsClient
         catch (IOException e) {
             throw new PrestoException(SHEETS_UNKNOWN_TABLE_ERROR, "Failed reading data from sheet: " + sheetExpression, e);
         }
+    }
+
+    private List<Object> readHeaderFromSheetExpression(String sheetExpression)
+    {
+        try {
+            Matcher matcher = SHEET_REGEX.matcher(sheetExpression);
+            if (!matcher.matches()) {
+                return ImmutableList.of();
+            }
+            String sheetId = requireNonNull(matcher.group("sheetId"), "sheetId is null");
+            Optional<String> tab = Optional.ofNullable(matcher.group("tab"));
+            Optional<String> begin = Optional.ofNullable(matcher.group("begin"));
+            List<List<Object>> values = sheetsService.spreadsheets().values().get(sheetId, getHeaderRange(tab, begin)).execute().getValues();
+            if (values.isEmpty()) {
+                return ImmutableList.of();
+            }
+            return values.get(0);
+        }
+        catch (Exception e) {
+            throw new PrestoException(SHEETS_UNKNOWN_TABLE_ERROR, "Failed reading header from sheet: " + sheetExpression, e);
+        }
+    }
+
+    @VisibleForTesting
+    static String getHeaderRange(Optional<String> tab, Optional<String> begin)
+    {
+        String range = begin.map(first -> format("%1$s:%1$s", first)).orElse(HEADER_RANGE);
+        return tab.map(name -> format("%s!%s", name, range)).orElse(range);
     }
 
     private static CacheBuilder<Object, Object> newCacheBuilder(long expiresAfterWriteMillis, long maximumSize)

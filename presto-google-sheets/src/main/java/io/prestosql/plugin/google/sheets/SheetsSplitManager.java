@@ -13,6 +13,7 @@
  */
 package io.prestosql.plugin.google.sheets;
 
+import com.google.common.collect.ImmutableList;
 import io.prestosql.spi.connector.ConnectorSession;
 import io.prestosql.spi.connector.ConnectorSplit;
 import io.prestosql.spi.connector.ConnectorSplitManager;
@@ -20,28 +21,12 @@ import io.prestosql.spi.connector.ConnectorSplitSource;
 import io.prestosql.spi.connector.ConnectorTableHandle;
 import io.prestosql.spi.connector.ConnectorTransactionHandle;
 import io.prestosql.spi.connector.FixedSplitSource;
-import io.prestosql.spi.connector.TableNotFoundException;
 
-import javax.inject.Inject;
-
-import java.util.ArrayList;
-import java.util.Collections;
 import java.util.List;
-import java.util.Optional;
-
-import static java.util.Objects.requireNonNull;
 
 public class SheetsSplitManager
         implements ConnectorSplitManager
 {
-    private final SheetsClient sheetsClient;
-
-    @Inject
-    public SheetsSplitManager(SheetsClient sheetsClient)
-    {
-        this.sheetsClient = requireNonNull(sheetsClient, "client is null");
-    }
-
     @Override
     public ConnectorSplitSource getSplits(
             ConnectorTransactionHandle transaction,
@@ -50,16 +35,10 @@ public class SheetsSplitManager
             SplitSchedulingStrategy splitSchedulingStrategy)
     {
         SheetsTableHandle tableHandle = (SheetsTableHandle) connectorTableHandle;
-        Optional<SheetsTable> table = sheetsClient.getTable(tableHandle.getTableName());
 
-        // this can happen if table is removed during a query
-        if (!table.isPresent()) {
-            throw new TableNotFoundException(tableHandle.toSchemaTableName());
-        }
-
-        List<ConnectorSplit> splits = new ArrayList<>();
-        splits.add(new SheetsSplit(tableHandle.getSchemaName(), tableHandle.getTableName(), table.get().getValues()));
-        Collections.shuffle(splits);
+        List<ConnectorSplit> splits = ImmutableList.<ConnectorSplit>builder()
+                .add(new SheetsSplit(tableHandle.getSchemaName(), tableHandle.getTableName()))
+                .build();
         return new FixedSplitSource(splits);
     }
 }

@@ -13,6 +13,7 @@
  */
 package io.prestosql.plugin.google.sheets;
 
+import com.google.common.collect.ImmutableList;
 import io.prestosql.spi.connector.RecordCursor;
 import io.prestosql.spi.connector.RecordSet;
 import io.prestosql.spi.type.Type;
@@ -29,11 +30,11 @@ public class SheetsRecordSet
     private final List<Type> columnTypes;
     private final List<List<Object>> values;
 
-    public SheetsRecordSet(SheetsSplit split, List<SheetsColumnHandle> columnHandles)
+    public SheetsRecordSet(List<SheetsColumnHandle> columnHandles, List<List<Object>> values)
     {
-        requireNonNull(split, "split is null");
+        requireNonNull(values, "values is null");
         this.columnHandles = requireNonNull(columnHandles, "column handles is null");
-        this.values = split.getValues();
+        this.values = ImmutableList.copyOf(values);
         this.columnTypes = columnHandles.stream().map(c -> c.getColumnType()).collect(Collectors.toList());
     }
 

@@ -20,8 +20,12 @@ import io.prestosql.spi.connector.ConnectorSplit;
 import io.prestosql.spi.connector.ConnectorTableHandle;
 import io.prestosql.spi.connector.ConnectorTransactionHandle;
 import io.prestosql.spi.connector.RecordSet;
+import io.prestosql.spi.connector.TableNotFoundException;
+
+import javax.inject.Inject;
 
 import java.util.List;
+import java.util.Optional;
 import java.util.stream.Collectors;
 
 import static java.util.Objects.requireNonNull;
@@ -29,13 +33,29 @@ import static java.util.Objects.requireNonNull;
 public class SheetsRecordSetProvider
         implements ConnectorRecordSetProvider
 {
+    private final SheetsClient sheetsClient;
+
+    @Inject
+    public SheetsRecordSetProvider(SheetsClient sheetsClient)
+    {
+        this.sheetsClient = requireNonNull(sheetsClient, "client is null");
+    }
+
     @Override
     public RecordSet getRecordSet(ConnectorTransactionHandle transaction, ConnectorSession session, ConnectorSplit split, ConnectorTableHandle table, List<? extends ColumnHandle> columns)
     {
         requireNonNull(split, "split is null");
         SheetsSplit sheetsSplit = (SheetsSplit) split;
+        SheetsTableHandle tableHandle = (SheetsTableHandle) table;
+
+        Optional<List<List<Object>>> sheetsData = sheetsClient.getData(tableHandle.getTableName());
+
+        // this can happen if table is removed during a query
+        if (!sheetsData.isPresent()) {
+            throw new TableNotFoundException(tableHandle.toSchemaTableName());
+        }
 
         List<SheetsColumnHandle> handles = columns.stream().map(c -> (SheetsColumnHandle) c).collect(Collectors.toList());
-        return new SheetsRecordSet(sheetsSplit, handles);
+        return new SheetsRecordSet(handles, sheetsData.get());
     }
 }

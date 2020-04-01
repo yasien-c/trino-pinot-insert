@@ -23,13 +23,23 @@ import org.testng.annotations.Test;
 import java.io.File;
 import java.nio.file.Files;
 import java.util.Base64;
+import java.util.Optional;
+import java.util.UUID;
+import java.util.regex.Matcher;
 
 import static com.google.common.collect.ImmutableMap.Builder;
 import static com.google.common.collect.Iterables.getOnlyElement;
+import static io.prestosql.plugin.google.sheets.SheetsClient.HEADER_RANGE;
+import static io.prestosql.plugin.google.sheets.SheetsClient.SHEET_REGEX;
+import static io.prestosql.plugin.google.sheets.SheetsClient.getHeaderRange;
 import static io.prestosql.plugin.google.sheets.TestGoogleSheets.GOOGLE_SHEETS;
 import static java.io.File.createTempFile;
+import static java.lang.String.format;
 import static java.nio.charset.StandardCharsets.UTF_8;
+import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertNotNull;
+import static org.testng.Assert.assertNull;
+import static org.testng.Assert.assertTrue;
 
 public class TestSheetsPlugin
 {
@@ -55,5 +65,39 @@ public class TestSheetsPlugin
         Builder<String, String> propertiesMap = new Builder<String, String>().put("credentials-path", getTestCredentialsPath()).put("metadata-sheet-id", TEST_METADATA_SHEET_ID);
         Connector c = factory.create(GOOGLE_SHEETS, propertiesMap.build(), new TestingConnectorContext());
         assertNotNull(c);
+    }
+
+    @Test
+    public void testSheetsExpression()
+    {
+        String sheetId = UUID.randomUUID().toString();
+        String tab = "Sheet!";
+        String begin = "$100";
+        String range = format("%s:$2000", begin);
+        String sheetWithExclamation = format("%s#%s", sheetId, tab);
+        String sheetWithExclamationAndRange = format("%s#%s!%s", sheetId, tab, range);
+        Matcher matcher = SHEET_REGEX.matcher(sheetId);
+        assertTrue(matcher.matches());
+        assertEquals(matcher.group("sheetId"), sheetId);
+        assertNull(matcher.group("tab"));
+        assertNull(matcher.group("range"));
+        assertNull(matcher.group("begin"));
+
+        matcher = SHEET_REGEX.matcher(sheetWithExclamation);
+        assertTrue(matcher.matches());
+        assertEquals(matcher.group("sheetId"), sheetId);
+        assertEquals(matcher.group("tab"), tab);
+        assertNull(matcher.group("range"));
+        assertNull(matcher.group("begin"));
+
+        matcher = SHEET_REGEX.matcher(sheetWithExclamationAndRange);
+        assertTrue(matcher.matches());
+        assertEquals(matcher.group("sheetId"), sheetId);
+        assertEquals(matcher.group("tab"), tab);
+        assertEquals(matcher.group("range"), range);
+        assertEquals(matcher.group("begin"), begin);
+
+        assertEquals(getHeaderRange(Optional.of(tab), Optional.empty()), format("%s!%s", tab, HEADER_RANGE));
+        assertEquals(getHeaderRange(Optional.of(tab), Optional.of(begin)), format("%s!%2$s:%2$s", tab, begin));
     }
 }

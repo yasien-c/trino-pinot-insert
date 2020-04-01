@@ -29,18 +29,15 @@ public class SheetsSplit
 {
     private final String schemaName;
     private final String tableName;
-    private final List<List<Object>> values;
     private final List<HostAddress> hostAddresses;
 
     @JsonCreator
     public SheetsSplit(
             @JsonProperty("schemaName") String schemaName,
-            @JsonProperty("tableName") String tableName,
-            @JsonProperty("values") List<List<Object>> values)
+            @JsonProperty("tableName") String tableName)
     {
         this.schemaName = requireNonNull(schemaName, "schema name is null");
         this.tableName = requireNonNull(tableName, "table name is null");
-        this.values = requireNonNull(values, "values is null");
         this.hostAddresses = ImmutableList.of();
     }
 
@@ -54,12 +51,6 @@ public class SheetsSplit
     public String getTableName()
     {
         return tableName;
-    }
-
-    @JsonProperty
-    public List<List<Object>> getValues()
-    {
-        return values;
     }
 
     @Override
