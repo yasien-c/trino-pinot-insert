@@ -20,6 +20,7 @@ import com.google.api.client.json.JsonFactory;
 import com.google.api.client.json.jackson2.JacksonFactory;
 import com.google.api.services.sheets.v4.Sheets;
 import com.google.api.services.sheets.v4.SheetsScopes;
+import com.google.api.services.sheets.v4.model.Sheet;
 import com.google.common.annotations.VisibleForTesting;
 import com.google.common.cache.CacheBuilder;
 import com.google.common.cache.CacheLoader;
@@ -31,6 +32,7 @@ import com.google.common.util.concurrent.UncheckedExecutionException;
 import io.airlift.json.JsonCodec;
 import io.airlift.log.Logger;
 import io.prestosql.spi.PrestoException;
+import io.prestosql.spi.connector.TableNotFoundException;
 import io.prestosql.spi.type.VarcharType;
 
 import javax.inject.Inject;
@@ -49,14 +51,17 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 import static com.google.api.client.googleapis.javanet.GoogleNetHttpTransport.newTrustedTransport;
+import static com.google.common.base.Preconditions.checkState;
 import static com.google.common.base.Throwables.throwIfInstanceOf;
 import static com.google.common.cache.CacheLoader.from;
+import static io.prestosql.plugin.google.sheets.SheetRange.parseRange;
 import static io.prestosql.plugin.google.sheets.SheetsErrorCode.SHEETS_BAD_CREDENTIALS_ERROR;
 import static io.prestosql.plugin.google.sheets.SheetsErrorCode.SHEETS_METASTORE_ERROR;
 import static io.prestosql.plugin.google.sheets.SheetsErrorCode.SHEETS_TABLE_LOAD_ERROR;
 import static io.prestosql.plugin.google.sheets.SheetsErrorCode.SHEETS_UNKNOWN_TABLE_ERROR;
 import static java.lang.String.format;
 import static java.util.Locale.ENGLISH;
+import static java.util.Locale.filter;
 import static java.util.Objects.requireNonNull;
 import static java.util.concurrent.TimeUnit.MILLISECONDS;
 
@@ -76,8 +81,9 @@ public class SheetsClient
     private static final List<String> SCOPES = ImmutableList.of(SheetsScopes.SPREADSHEETS_READONLY);
 
     private final LoadingCache<String, Optional<String>> tableSheetMappingCache;
+    private final LoadingCache<String, List<List<Object>>> metadataSheetCache;
     private final LoadingCache<String, List<List<Object>>> sheetDataCache;
-    private final LoadingCache<String, List<Object>> sheetMetadataCache;
+    private final LoadingCache<String, List<Object>> columnMetadataCache;
 
     private final String metadataSheetId;
     private final String credentialsFilePath;
@@ -120,9 +126,9 @@ public class SheetsClient
                         return getAllTableSheetExpressionMapping();
                     }
                 });
-
+        this.metadataSheetCache = newCacheBuilder(expiresAfterWriteMillis, maxCacheSize).build(from(this::readAllValuesFromSheetExpression));
+        this.columnMetadataCache = newCacheBuilder(expiresAfterWriteMillis, maxCacheSize).build(from(this::readHeaderFromSheetExpression));
         this.sheetDataCache = newCacheBuilder(expiresAfterWriteMillis, maxCacheSize).build(from(this::readAllValuesFromSheetExpression));
-        this.sheetMetadataCache = newCacheBuilder(expiresAfterWriteMillis, maxCacheSize).build(from(this::readHeaderFromSheetExpression));
     }
 
     public Optional<SheetsTable> getTable(String tableName)
@@ -147,23 +153,21 @@ public class SheetsClient
         return Optional.empty();
     }
 
-    public Optional<List<List<Object>>> getData(String tableName)
+    public List<List<Object>> getData(SheetsTableHandle tableHandle, SheetsSplit split)
     {
-        List<List<Object>> values = readAllValues(tableName);
-        if (!values.isEmpty()) {
-            if (values.size() > 1) {
-                return Optional.of(values.subList(1, values.size())); // removing header info
-            }
-            return Optional.of(ImmutableList.of());
+        List<List<Object>> values = readAllValues(tableHandle.getTableName());
+        sheetsService.spreadsheets().values().get(split.getSheetDataLocation().getSheetId(), split.getSheetDataLocation().getTabAndRange());
+        if (values == null || values.isEmpty()) {
+            throw new TableNotFoundException(tableHandle.toSchemaTableName());
         }
-        return Optional.empty();
+        return values.subList(1, values.size());
     }
 
     public Set<String> getTableNames()
     {
         ImmutableSet.Builder<String> tables = ImmutableSet.builder();
         try {
-            List<List<Object>> tableMetadata = sheetDataCache.getUnchecked(metadataSheetId);
+            List<List<Object>> tableMetadata = metadataSheetCache.getUnchecked(metadataSheetId);
             for (int i = 1; i < tableMetadata.size(); i++) {
                 if (tableMetadata.get(i).size() > 0) {
                     tables.add(String.valueOf(tableMetadata.get(i).get(0)));
@@ -199,7 +203,7 @@ public class SheetsClient
             if (!sheetExpression.isPresent()) {
                 throw new PrestoException(SHEETS_UNKNOWN_TABLE_ERROR, "Sheet expression not found for table " + tableName);
             }
-            return sheetMetadataCache.getUnchecked(sheetExpression.get());
+            return columnMetadataCache.getUnchecked(sheetExpression.get());
         }
         catch (UncheckedExecutionException e) {
             throwIfInstanceOf(e.getCause(), PrestoException.class);
@@ -286,6 +290,64 @@ public class SheetsClient
         }
         catch (Exception e) {
             throw new PrestoException(SHEETS_UNKNOWN_TABLE_ERROR, "Failed reading header from sheet: " + sheetExpression, e);
+        }
+    }
+
+    public SheetDataLocation parseDataLocation(String tableName)
+    {
+        return parseDataLocation(tableName, false);
+    }
+
+    public SheetDataLocation parseDataLocationNoHeader(String tableName)
+    {
+        return parseDataLocation(tableName, true);
+    }
+
+    private SheetDataLocation parseDataLocation(String tableName, boolean noHeader)
+    {
+        try {
+            requireNonNull(tableName, "sheetExpression is null");
+
+            Optional<String> sheetExpression = tableSheetMappingCache.getUnchecked(tableName);
+            if (sheetExpression == null || !sheetExpression.isPresent()) {
+                throw new PrestoException(SHEETS_UNKNOWN_TABLE_ERROR, "Sheet expression not found for table " + tableName);
+            }
+
+            Matcher matcher = SHEET_REGEX.matcher(sheetExpression.get());
+            checkState(matcher.matches(), "Malformed sheet expression: %s", sheetExpression);
+            String sheetId = requireNonNull(matcher.group("sheetId"), "sheetId is null");
+            Optional<String> tab = Optional.ofNullable(matcher.group("tab"));
+            Optional<String> rangeExpression = Optional.ofNullable(matcher.group("range"));
+
+            if (tab.isPresent() && rangeExpression.isPresent()) {
+                return new SheetDataLocation(sheetId, tab.get(), parseRange(rangeExpression.get()));
+            }
+
+            List<Sheet> sheets = sheetsService.spreadsheets().get(sheetId).execute().getSheets();
+            checkState(sheets != null && !sheets.isEmpty(), "sheets is null or empty");
+
+            if (!tab.isPresent()) {
+                tab = Optional.of(sheets.get(0).getProperties().getTitle());
+            }
+            SheetRange range;
+            if (rangeExpression.isPresent()) {
+                range = parseRange(rangeExpression.get());
+            }
+            else {
+                String title = tab.get();
+                Optional<Sheet> filteredSheet = sheets.stream()
+                        .filter(sheet -> sheet.getProperties().getTitle().equals(title))
+                        .findAny();
+                checkState(filteredSheet.isPresent(), "Sheet not found");
+                range = new SheetRange(1, filteredSheet.get().getProperties().getGridProperties().getRowCount());
+            }
+            if (noHeader) {
+                range = new SheetRange(range.getBegin() + 1, range.getEnd());
+            }
+            return new SheetDataLocation(sheetId, tab.get(), range);
+        }
+        catch (Exception e) {
+            throw new PrestoException(SHEETS_UNKNOWN_TABLE_ERROR, format("Failed to parse '%s':", tableName), e);
         }
     }
 

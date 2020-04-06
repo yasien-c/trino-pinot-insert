@@ -48,14 +48,9 @@ public class SheetsRecordSetProvider
         SheetsSplit sheetsSplit = (SheetsSplit) split;
         SheetsTableHandle tableHandle = (SheetsTableHandle) table;
 
-        Optional<List<List<Object>>> sheetsData = sheetsClient.getData(tableHandle.getTableName());
-
-        // this can happen if table is removed during a query
-        if (!sheetsData.isPresent()) {
-            throw new TableNotFoundException(tableHandle.toSchemaTableName());
-        }
+        List<List<Object>> sheetsData = sheetsClient.getData(tableHandle, sheetsSplit);
 
         List<SheetsColumnHandle> handles = columns.stream().map(c -> (SheetsColumnHandle) c).collect(Collectors.toList());
-        return new SheetsRecordSet(handles, sheetsData.get());
+        return new SheetsRecordSet(handles, sheetsData);
     }
 }

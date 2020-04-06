@@ -31,6 +31,7 @@ public class SheetsConfig
     private Duration sheetsConnectTimeout = new Duration(10, TimeUnit.SECONDS);
     private Duration sheetsReadTimeout = new Duration(2, TimeUnit.MINUTES);
     private Duration sheetsDataExpireAfterWrite = new Duration(5, TimeUnit.MINUTES);
+    private int maxRowsPerSplit = 100_000;
 
     @NotNull
     public String getCredentialsFilePath()
@@ -113,6 +114,20 @@ public class SheetsConfig
     public SheetsConfig setSheetsDataExpireAfterWrite(Duration sheetsDataExpireAfterWriteMinutes)
     {
         this.sheetsDataExpireAfterWrite = sheetsDataExpireAfterWriteMinutes;
+        return this;
+    }
+
+    @Min(1)
+    public int getMaxRowsPerSplit()
+    {
+        return maxRowsPerSplit;
+    }
+
+    @Config("sheets-max-rows-per-split")
+    @ConfigDescription("Max rows per split")
+    public SheetsConfig setMaxRowsPerSplit(int maxRowsPerSplit)
+    {
+        this.maxRowsPerSplit = maxRowsPerSplit;
         return this;
     }
 }

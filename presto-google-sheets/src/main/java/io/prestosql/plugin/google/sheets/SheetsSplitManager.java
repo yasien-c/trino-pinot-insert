@@ -22,11 +22,26 @@ import io.prestosql.spi.connector.ConnectorTableHandle;
 import io.prestosql.spi.connector.ConnectorTransactionHandle;
 import io.prestosql.spi.connector.FixedSplitSource;
 
+import javax.inject.Inject;
 import java.util.List;
+
+import static com.google.common.collect.ImmutableList.toImmutableList;
+import static java.util.Objects.requireNonNull;
 
 public class SheetsSplitManager
         implements ConnectorSplitManager
 {
+
+    private final SheetsClient sheetsClient;
+    private final int maxRowsPerSplit;
+
+    @Inject
+    public SheetsSplitManager(SheetsClient sheetsClient, SheetsConfig config)
+    {
+        this.sheetsClient = requireNonNull(sheetsClient, "client is null");
+        maxRowsPerSplit = requireNonNull(config, "config is null").getMaxRowsPerSplit();
+    }
+
     @Override
     public ConnectorSplitSource getSplits(
             ConnectorTransactionHandle transaction,
@@ -35,10 +50,10 @@ public class SheetsSplitManager
             SplitSchedulingStrategy splitSchedulingStrategy)
     {
         SheetsTableHandle tableHandle = (SheetsTableHandle) connectorTableHandle;
-
-        List<ConnectorSplit> splits = ImmutableList.<ConnectorSplit>builder()
-                .add(new SheetsSplit(tableHandle.getSchemaName(), tableHandle.getTableName()))
-                .build();
+        SheetDataLocation dataLocation = sheetsClient.parseDataLocationNoHeader(tableHandle.getTableName());
+        List<ConnectorSplit> splits = dataLocation.partition(maxRowsPerSplit).stream()
+                .map(location -> new SheetsSplit(tableHandle.getSchemaName(), tableHandle.getTableName(), location))
+                .collect(toImmutableList());
         return new FixedSplitSource(splits);
     }
 }

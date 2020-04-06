@@ -30,15 +30,18 @@ public class SheetsSplit
     private final String schemaName;
     private final String tableName;
     private final List<HostAddress> hostAddresses;
+    private final SheetDataLocation sheetDataLocation;
 
     @JsonCreator
     public SheetsSplit(
             @JsonProperty("schemaName") String schemaName,
-            @JsonProperty("tableName") String tableName)
+            @JsonProperty("tableName") String tableName,
+            @JsonProperty("sheetExpression") SheetDataLocation sheetDataLocation)
     {
         this.schemaName = requireNonNull(schemaName, "schema name is null");
         this.tableName = requireNonNull(tableName, "table name is null");
         this.hostAddresses = ImmutableList.of();
+        this.sheetDataLocation = requireNonNull(sheetDataLocation, "sheetExpression is null");
     }
 
     @JsonProperty
@@ -51,6 +54,12 @@ public class SheetsSplit
     public String getTableName()
     {
         return tableName;
+    }
+
+    @JsonProperty
+    public SheetDataLocation getSheetDataLocation()
+    {
+        return sheetDataLocation;
     }
 
     @Override
