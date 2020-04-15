@@ -53,6 +53,7 @@ public class TestSheetsConfig
                 .put("credentials-path", credentialsPath)
                 .put("metadata-sheet-id", metadataSheetId)
                 .put("sheets-data-max-cache-size", String.valueOf(cacheSize))
+                .put("sheets-max-rows-per-split", "10000")
                 .put("sheets-data-expire-after-write", cacheDuration)
                 .build();
     }

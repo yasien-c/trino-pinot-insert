@@ -16,6 +16,7 @@ package io.prestosql.plugin.google.sheets;
 import com.google.inject.Injector;
 import io.airlift.bootstrap.Bootstrap;
 import io.airlift.json.JsonModule;
+import io.prestosql.spi.NodeManager;
 import io.prestosql.spi.connector.Connector;
 import io.prestosql.spi.connector.ConnectorContext;
 import io.prestosql.spi.connector.ConnectorFactory;
@@ -47,7 +48,10 @@ public class SheetsConnectorFactory
 
         Bootstrap app = new Bootstrap(
                 new JsonModule(),
-                new SheetsModule(context.getTypeManager()));
+                new SheetsModule(context.getTypeManager()),
+                binder -> {
+                    binder.bind(NodeManager.class).toInstance(context.getNodeManager());
+                });
 
         Injector injector = app
                 .strictConfig()

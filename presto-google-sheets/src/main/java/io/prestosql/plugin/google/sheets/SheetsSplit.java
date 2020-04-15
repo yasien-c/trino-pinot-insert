@@ -29,19 +29,20 @@ public class SheetsSplit
 {
     private final String schemaName;
     private final String tableName;
-    private final List<HostAddress> hostAddresses;
+    private final HostAddress address;
     private final SheetDataLocation sheetDataLocation;
 
     @JsonCreator
     public SheetsSplit(
             @JsonProperty("schemaName") String schemaName,
             @JsonProperty("tableName") String tableName,
-            @JsonProperty("sheetExpression") SheetDataLocation sheetDataLocation)
+            @JsonProperty("sheetDataLocation") SheetDataLocation sheetDataLocation,
+            @JsonProperty("address") HostAddress address)
     {
         this.schemaName = requireNonNull(schemaName, "schema name is null");
         this.tableName = requireNonNull(tableName, "table name is null");
-        this.hostAddresses = ImmutableList.of();
         this.sheetDataLocation = requireNonNull(sheetDataLocation, "sheetExpression is null");
+        this.address = address;
     }
 
     @JsonProperty
@@ -71,7 +72,13 @@ public class SheetsSplit
     @Override
     public List<HostAddress> getAddresses()
     {
-        return hostAddresses;
+        return ImmutableList.of(address);
+    }
+
+    @JsonProperty
+    public HostAddress getAddress()
+    {
+        return address;
     }
 
     @Override
@@ -80,7 +87,6 @@ public class SheetsSplit
         return ImmutableMap.builder()
                 .put("schemaName", schemaName)
                 .put("tableName", tableName)
-                .put("hostAddresses", hostAddresses)
                 .build();
     }
 }

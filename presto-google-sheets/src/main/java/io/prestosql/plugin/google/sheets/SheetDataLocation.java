@@ -30,7 +30,7 @@ public class SheetDataLocation
     private final SheetRange range;
 
     @JsonCreator
-    public SheetDataLocation(@JsonProperty String sheetId, @JsonProperty String tab, @JsonProperty SheetRange range)
+    public SheetDataLocation(@JsonProperty("sheetId") String sheetId, @JsonProperty("tab") String tab, @JsonProperty("range") SheetRange range)
     {
         this.sheetId = requireNonNull(sheetId, "sheetId is null");
         this.tab = requireNonNull(tab, "tab is null");
@@ -64,6 +64,17 @@ public class SheetDataLocation
             return format("%s!%s", tab, range.getRangeExpression());
         }
     }
+
+    public String getHeaderTabAndRange()
+    {
+        if (tab.isEmpty()) {
+            return range.getHeaderRangeExpression();
+        }
+        else {
+            return format("%s!%s", tab, range.getHeaderRangeExpression());
+        }
+    }
+
     public List<SheetDataLocation> partition(int partitionSize)
     {
         return range.partition(partitionSize).stream()
@@ -81,9 +92,9 @@ public class SheetDataLocation
             return false;
         }
         SheetDataLocation that = (SheetDataLocation) other;
-        return sheetId.equals(that.getSheetId()) &&
-                tab.equals(that.getTab()) &&
-                range.equals(that.getRange());
+        return sheetId.equals(that.sheetId) &&
+                tab.equals(that.tab) &&
+                range.equals(that.range);
     }
 
     @Override

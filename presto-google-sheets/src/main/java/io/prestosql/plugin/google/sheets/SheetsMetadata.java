@@ -15,6 +15,11 @@ package io.prestosql.plugin.google.sheets;
 
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
+import com.google.common.util.concurrent.Futures;
+import com.google.common.util.concurrent.ListenableFuture;
+import com.google.common.util.concurrent.ListeningExecutorService;
+import com.google.common.util.concurrent.MoreExecutors;
+import com.google.common.util.concurrent.UncheckedExecutionException;
 import io.prestosql.spi.PrestoException;
 import io.prestosql.spi.connector.ColumnHandle;
 import io.prestosql.spi.connector.ColumnMetadata;
@@ -27,6 +32,7 @@ import io.prestosql.spi.connector.SchemaTableName;
 import io.prestosql.spi.connector.SchemaTablePrefix;
 import io.prestosql.spi.connector.TableNotFoundException;
 
+import javax.annotation.PreDestroy;
 import javax.inject.Inject;
 
 import java.util.ArrayList;
@@ -34,21 +40,34 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ExecutionException;
 
+import static io.airlift.concurrent.Threads.threadsNamed;
 import static io.prestosql.plugin.google.sheets.SheetsErrorCode.SHEETS_UNKNOWN_SCHEMA_ERROR;
 import static io.prestosql.plugin.google.sheets.SheetsErrorCode.SHEETS_UNKNOWN_TABLE_ERROR;
 import static java.util.Objects.requireNonNull;
+import static java.util.concurrent.Executors.newCachedThreadPool;
+import static java.util.stream.Collectors.toList;
 
 public class SheetsMetadata
         implements ConnectorMetadata
 {
     private final SheetsClient sheetsClient;
     private static final List<String> SCHEMAS = ImmutableList.of("default");
+    private final ListeningExecutorService metadataExecutor;
 
     @Inject
     public SheetsMetadata(SheetsClient sheetsClient)
     {
         this.sheetsClient = requireNonNull(sheetsClient, "client is null");
+        this.metadataExecutor = MoreExecutors.listeningDecorator(newCachedThreadPool(threadsNamed("query-scheduler-%s")));
+    }
+
+    @PreDestroy
+    public void stop()
+    {
+        metadataExecutor.shutdownNow();
     }
 
     @Override
@@ -110,15 +129,19 @@ public class SheetsMetadata
     public Map<SchemaTableName, List<ColumnMetadata>> listTableColumns(ConnectorSession session, SchemaTablePrefix prefix)
     {
         requireNonNull(prefix, "prefix is null");
-        ImmutableMap.Builder<SchemaTableName, List<ColumnMetadata>> columns = ImmutableMap.builder();
-        for (SchemaTableName tableName : listTables(session, prefix.getSchema())) {
-            Optional<ConnectorTableMetadata> tableMetadata = getTableMetadata(tableName);
-            // table can disappear during listing operation
-            if (tableMetadata.isPresent()) {
-                columns.put(tableName, tableMetadata.get().getColumns());
-            }
+
+        Map<SchemaTableName, List<ColumnMetadata>> columns = new ConcurrentHashMap<>();
+        List<ListenableFuture<?>> futures = listTables(session, prefix.getSchema()).stream()
+                .map(tableName -> metadataExecutor.submit(() -> getTableMetadata(tableName)
+                        .ifPresent(tableMetadata -> columns.put(tableName, tableMetadata.getColumns()))))
+                .collect(toList());
+        try {
+            Futures.allAsList(futures).get();
         }
-        return columns.build();
+        catch (InterruptedException | ExecutionException e) {
+            throw new UncheckedExecutionException(e);
+        }
+        return ImmutableMap.copyOf(columns);
     }
 
     private Optional<ConnectorTableMetadata> getTableMetadata(SchemaTableName tableName)

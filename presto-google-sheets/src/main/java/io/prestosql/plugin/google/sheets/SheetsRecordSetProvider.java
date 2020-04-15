@@ -20,12 +20,10 @@ import io.prestosql.spi.connector.ConnectorSplit;
 import io.prestosql.spi.connector.ConnectorTableHandle;
 import io.prestosql.spi.connector.ConnectorTransactionHandle;
 import io.prestosql.spi.connector.RecordSet;
-import io.prestosql.spi.connector.TableNotFoundException;
 
 import javax.inject.Inject;
 
 import java.util.List;
-import java.util.Optional;
 import java.util.stream.Collectors;
 
 import static java.util.Objects.requireNonNull;
@@ -46,9 +44,8 @@ public class SheetsRecordSetProvider
     {
         requireNonNull(split, "split is null");
         SheetsSplit sheetsSplit = (SheetsSplit) split;
-        SheetsTableHandle tableHandle = (SheetsTableHandle) table;
 
-        List<List<Object>> sheetsData = sheetsClient.getData(tableHandle, sheetsSplit);
+        List<List<Object>> sheetsData = sheetsClient.getData(sheetsSplit.getSheetDataLocation());
 
         List<SheetsColumnHandle> handles = columns.stream().map(c -> (SheetsColumnHandle) c).collect(Collectors.toList());
         return new SheetsRecordSet(handles, sheetsData);

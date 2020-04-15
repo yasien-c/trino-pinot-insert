@@ -45,7 +45,7 @@ public class SheetRange
     }
 
     @JsonCreator
-    public SheetRange(@JsonProperty int begin, @JsonProperty  int end)
+    public SheetRange(@JsonProperty("begin") int begin, @JsonProperty("end") int end)
     {
         checkArgument(begin >= 1, "begin is less than 1");
         checkArgument(end >= 1, "end is less than 1");
@@ -71,7 +71,7 @@ public class SheetRange
         return format("$%s:$%s", begin, end);
     }
 
-    public String getHeaderRange()
+    public String getHeaderRangeExpression()
     {
         return format("$%1$s:$%1$s", begin);
     }

@@ -47,9 +47,11 @@ import static com.google.api.client.googleapis.javanet.GoogleNetHttpTransport.ne
 import static io.prestosql.plugin.google.sheets.SheetsErrorCode.SHEETS_BAD_CREDENTIALS_ERROR;
 import static io.prestosql.plugin.google.sheets.TestSheetsConfig.getProperties;
 import static io.prestosql.testing.TestingSession.testSessionBuilder;
-import static java.lang.String.format;
+import static org.testng.Assert.assertEquals;
+import static org.testng.Assert.assertTrue;
 
-public class TestSheetsQueryRunner {
+public class TestSheetsQueryRunner
+{
     static final String STAGING_METADATA_SHEET_ID = "14Yy_O8OBVLhdv1vA2g7RlvGdv2AIRmrMlxQAO0YdZ30";
     static final String CREDENTIALS_PATH = "/Users/elon/repos/tmp/gcs/gcp-key2.json";
     static final String GOOGLE_SHEETS = "gsheets";
@@ -91,6 +93,44 @@ public class TestSheetsQueryRunner {
     }
 
     @Test
+    public void testPatterns()
+    {
+        Pattern patternDefault = Pattern.compile("(?<sheetId>.*?)(?:#(?:(?<tab>[^!].*?))?(?:!(?<range>(?<begin>\\$\\d+):\\$\\d+))?)?$");
+        Pattern patternNew = Pattern.compile("(?<sheetId>.*?)(?:#(?:(?<tab>.*?))?(?:!(?<range>(?<begin>\\$\\d+):\\$\\d+))?)?$");
+        String expression = "14quQPFErG-hlpsrNgYcX85vW7JMMK5X2vNZrafRcH8c#COVID-19 Cases!$1:$200000";
+        Matcher matcher = patternNew.matcher(expression);
+        assertTrue(matcher.matches());
+        assertEquals(matcher.group("sheetId"), "14quQPFErG-hlpsrNgYcX85vW7JMMK5X2vNZrafRcH8c");
+        assertEquals(matcher.group("tab"), "COVID-19 Cases");
+        assertEquals(matcher.group("range"), "$1:$200000");
+        assertEquals(matcher.group("begin"), "$1");
+
+        expression = "14quQPFErG-hlpsrNgYcX85vW7JMMK5X2vNZrafRcH8c#COVID-19 Cases!!$1:$200000";
+        matcher = patternNew.matcher(expression);
+        assertTrue(matcher.matches());
+        assertEquals(matcher.group("sheetId"), "14quQPFErG-hlpsrNgYcX85vW7JMMK5X2vNZrafRcH8c");
+        assertEquals(matcher.group("tab"), "COVID-19 Cases!");
+        assertEquals(matcher.group("range"), "$1:$200000");
+        assertEquals(matcher.group("begin"), "$1");
+
+        expression = "14quQPFErG-hlpsrNgYcX85vW7JMMK5X2vNZrafRcH8c#!$1:$200000";
+        matcher = patternNew.matcher(expression);
+        assertTrue(matcher.matches());
+        assertEquals(matcher.group("sheetId"), "14quQPFErG-hlpsrNgYcX85vW7JMMK5X2vNZrafRcH8c");
+        assertEquals(matcher.group("tab"), "");
+        assertEquals(matcher.group("range"), "$1:$200000");
+        assertEquals(matcher.group("begin"), "$1");
+
+        expression = "14quQPFErG-hlpsrNgYcX85vW7JMMK5X2vNZrafRcH8c#COVID-19 Cases!";
+        matcher = patternNew.matcher(expression);
+        assertTrue(matcher.matches());
+        assertEquals(matcher.group("sheetId"), "14quQPFErG-hlpsrNgYcX85vW7JMMK5X2vNZrafRcH8c");
+        assertEquals(matcher.group("tab"), "COVID-19 Cases!");
+        assertEquals(matcher.group("range"), null);
+        assertEquals(matcher.group("begin"), null);
+    }
+
+    @Test
     public void testSheetRegex()
     {
         Pattern pattern = Pattern.compile("(?<sheetId>.*?)(?:#(?<suffix>.+))?$");
@@ -103,12 +143,12 @@ public class TestSheetsQueryRunner {
             System.out.println(matcher.group("suffix"));
             Matcher matcher2 = pattern2.matcher(matcher.group("suffix"));
             if (matcher2.matches()) {
-
                 System.out.println(matcher2.group("range"));
                 System.out.println((matcher2.group("begin")));
             }
         }
     }
+
     private static Session createSession()
     {
         return testSessionBuilder()
@@ -139,16 +179,6 @@ public class TestSheetsQueryRunner {
                                                 .setStartRowIndex(1)
                                                 .setEndColumnIndex(14)
                                                 .setEndRowIndex(spreadSheet.getSheets().get(0).getProperties().getGridProperties().getColumnCount() - 2))))).execute();
-/*
-        sheetsService.spreadsheets().values().batchGetByDataFilter(sheetId,
-                new BatchGetValuesByDataFilterRequest().setDataFilters(
-                        ImmutableList.of(
-                                new DataFilter().setGridRange(
-                                        new GridRange()
-                                                .setStartColumnIndex(0)
-                                                .setStartRowIndex(0)
-                                                .setEndColumnIndex(1000)
-                                                .setEndRowIndex(1000))))).execute().getValueRanges();*/
         System.out.println("");
     }
 
@@ -178,7 +208,7 @@ public class TestSheetsQueryRunner {
         Map<String, String> properties = ImmutableMap.of("http-server.http.port", "8080");
         SheetsPlugin sheetsPlugin = new SheetsPlugin();
         DistributedQueryRunner queryRunner = DistributedQueryRunner.builder(createSession())
-                .setNodeCount(2)
+                .setNodeCount(4)
                 .setExtraProperties(properties)
                 .build();
         queryRunner.installPlugin(sheetsPlugin);
@@ -187,6 +217,5 @@ public class TestSheetsQueryRunner {
         Logger log = Logger.get(TestSheetsQueryRunner.class);
         log.info("======== SERVER STARTED ========");
         log.info("\n====\n%s\n====", queryRunner.getCoordinator().getBaseUrl());
-
     }
 }

@@ -23,16 +23,13 @@ import com.google.api.services.sheets.v4.SheetsScopes;
 import com.google.api.services.sheets.v4.model.Sheet;
 import com.google.common.annotations.VisibleForTesting;
 import com.google.common.cache.CacheBuilder;
-import com.google.common.cache.CacheLoader;
 import com.google.common.cache.LoadingCache;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
-import com.google.common.collect.ImmutableSet;
 import com.google.common.util.concurrent.UncheckedExecutionException;
 import io.airlift.json.JsonCodec;
 import io.airlift.log.Logger;
 import io.prestosql.spi.PrestoException;
-import io.prestosql.spi.connector.TableNotFoundException;
 import io.prestosql.spi.type.VarcharType;
 
 import javax.inject.Inject;
@@ -40,6 +37,7 @@ import javax.inject.Inject;
 import java.io.FileInputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.UncheckedIOException;
 import java.security.GeneralSecurityException;
 import java.util.HashSet;
 import java.util.List;
@@ -52,6 +50,7 @@ import java.util.regex.Pattern;
 
 import static com.google.api.client.googleapis.javanet.GoogleNetHttpTransport.newTrustedTransport;
 import static com.google.common.base.Preconditions.checkState;
+import static com.google.common.base.Strings.isNullOrEmpty;
 import static com.google.common.base.Throwables.throwIfInstanceOf;
 import static com.google.common.cache.CacheLoader.from;
 import static io.prestosql.plugin.google.sheets.SheetRange.parseRange;
@@ -61,7 +60,6 @@ import static io.prestosql.plugin.google.sheets.SheetsErrorCode.SHEETS_TABLE_LOA
 import static io.prestosql.plugin.google.sheets.SheetsErrorCode.SHEETS_UNKNOWN_TABLE_ERROR;
 import static java.lang.String.format;
 import static java.util.Locale.ENGLISH;
-import static java.util.Locale.filter;
 import static java.util.Objects.requireNonNull;
 import static java.util.concurrent.TimeUnit.MILLISECONDS;
 
@@ -71,18 +69,18 @@ public class SheetsClient
 
     private static final String APPLICATION_NAME = "presto google sheets integration";
     private static final JsonFactory JSON_FACTORY = JacksonFactory.getDefaultInstance();
+    private static final Object ALL_TABLES_KEY = new Object();
 
     @VisibleForTesting
-    static final Pattern SHEET_REGEX = Pattern.compile("(?<sheetId>.*?)(?:#(?:(?<tab>[^!].*?))?(?:!(?<range>(?<begin>\\$\\d+):\\$\\d+))?)?$");
+    static final Pattern SHEET_REGEX = Pattern.compile("(?<sheetId>.*?)(?:#(?:(?<tab>.*?))?(?:!(?<range>(?<begin>\\$\\d+):\\$\\d+))?)?$");
 
     @VisibleForTesting
     static final String HEADER_RANGE = "$1:$1";
 
     private static final List<String> SCOPES = ImmutableList.of(SheetsScopes.SPREADSHEETS_READONLY);
 
-    private final LoadingCache<String, Optional<String>> tableSheetMappingCache;
-    private final LoadingCache<String, List<List<Object>>> metadataSheetCache;
-    private final LoadingCache<String, List<List<Object>>> sheetDataCache;
+    private final LoadingCache<Object, Map<String, Optional<String>>> allTableSheetMappingCache;
+    private final LoadingCache<SheetDataLocation, List<List<Object>>> sheetDataCache;
     private final LoadingCache<String, List<Object>> columnMetadataCache;
 
     private final String metadataSheetId;
@@ -96,7 +94,7 @@ public class SheetsClient
         requireNonNull(config, "config is null");
         requireNonNull(catalogCodec, "catalogCodec is null");
 
-        this.metadataSheetId = config.getMetadataSheetId().trim();
+        this.metadataSheetId = requireNonNull(config.getMetadataSheetId().trim(), "metadataSheetId is null");
         this.credentialsFilePath = config.getCredentialsFilePath();
 
         try {
@@ -109,26 +107,13 @@ public class SheetsClient
         catch (GeneralSecurityException | IOException e) {
             throw new PrestoException(SHEETS_BAD_CREDENTIALS_ERROR, e);
         }
+
         long expiresAfterWriteMillis = config.getSheetsDataExpireAfterWrite().toMillis();
         long maxCacheSize = config.getSheetsDataMaxCacheSize();
 
-        this.tableSheetMappingCache = newCacheBuilder(expiresAfterWriteMillis, maxCacheSize)
-                .build(new CacheLoader<String, Optional<String>>() {
-                    @Override
-                    public Optional<String> load(String tableName)
-                    {
-                        return getSheetExpressionForTable(tableName);
-                    }
-
-                    @Override
-                    public Map<String, Optional<String>> loadAll(Iterable<? extends String> tableList)
-                    {
-                        return getAllTableSheetExpressionMapping();
-                    }
-                });
-        this.metadataSheetCache = newCacheBuilder(expiresAfterWriteMillis, maxCacheSize).build(from(this::readAllValuesFromSheetExpression));
+        this.allTableSheetMappingCache = newCacheBuilder(expiresAfterWriteMillis, maxCacheSize).build(from(this::getAllTableSheetMapping));
         this.columnMetadataCache = newCacheBuilder(expiresAfterWriteMillis, maxCacheSize).build(from(this::readHeaderFromSheetExpression));
-        this.sheetDataCache = newCacheBuilder(expiresAfterWriteMillis, maxCacheSize).build(from(this::readAllValuesFromSheetExpression));
+        this.sheetDataCache = newCacheBuilder(expiresAfterWriteMillis, maxCacheSize).build(from(this::readAllValuesFromSheetDataLocation));
     }
 
     public Optional<SheetsTable> getTable(String tableName)
@@ -153,19 +138,17 @@ public class SheetsClient
         return Optional.empty();
     }
 
-    public List<List<Object>> getData(SheetsTableHandle tableHandle, SheetsSplit split)
-    {
-        List<List<Object>> values = readAllValues(tableHandle.getTableName());
-        sheetsService.spreadsheets().values().get(split.getSheetDataLocation().getSheetId(), split.getSheetDataLocation().getTabAndRange());
-        if (values == null || values.isEmpty()) {
-            throw new TableNotFoundException(tableHandle.toSchemaTableName());
-        }
-        return values.subList(1, values.size());
-    }
-
     public Set<String> getTableNames()
     {
-        ImmutableSet.Builder<String> tables = ImmutableSet.builder();
+        try {
+            return allTableSheetMappingCache.getUnchecked(ALL_TABLES_KEY).keySet();
+        }
+        catch (UncheckedExecutionException e) {
+            throwIfInstanceOf(e.getCause(), PrestoException.class);
+            throw new PrestoException(SHEETS_METASTORE_ERROR, e);
+        }
+
+/*        ImmutableSet.Builder<String> tables = ImmutableSet.builder();
         try {
             List<List<Object>> tableMetadata = metadataSheetCache.getUnchecked(metadataSheetId);
             for (int i = 1; i < tableMetadata.size(); i++) {
@@ -178,28 +161,25 @@ public class SheetsClient
         catch (UncheckedExecutionException e) {
             throwIfInstanceOf(e.getCause(), PrestoException.class);
             throw new PrestoException(SHEETS_METASTORE_ERROR, e);
-        }
+        }*/
     }
 
-    private List<List<Object>> readAllValues(String tableName)
+    public List<List<Object>> getData(SheetDataLocation dataLocation)
     {
+        requireNonNull(dataLocation, "dataLocation is null");
         try {
-            Optional<String> sheetExpression = tableSheetMappingCache.getUnchecked(tableName);
-            if (!sheetExpression.isPresent()) {
-                throw new PrestoException(SHEETS_UNKNOWN_TABLE_ERROR, "Sheet expression not found for table " + tableName);
-            }
-            return sheetDataCache.getUnchecked(sheetExpression.get());
+            return sheetDataCache.getUnchecked(dataLocation);
         }
         catch (UncheckedExecutionException e) {
             throwIfInstanceOf(e.getCause(), PrestoException.class);
-            throw new PrestoException(SHEETS_TABLE_LOAD_ERROR, "Error loading data for table: " + tableName, e);
+            throw new PrestoException(SHEETS_UNKNOWN_TABLE_ERROR, format("Failed reading data from sheet '%s':", dataLocation), e);
         }
     }
 
     private List<Object> readHeader(String tableName)
     {
         try {
-            Optional<String> sheetExpression = tableSheetMappingCache.getUnchecked(tableName);
+            Optional<String> sheetExpression = allTableSheetMappingCache.getUnchecked(ALL_TABLES_KEY).get(tableName);
             if (!sheetExpression.isPresent()) {
                 throw new PrestoException(SHEETS_UNKNOWN_TABLE_ERROR, "Sheet expression not found for table " + tableName);
             }
@@ -211,16 +191,7 @@ public class SheetsClient
         }
     }
 
-    private Optional<String> getSheetExpressionForTable(String tableName)
-    {
-        Map<String, Optional<String>> tableSheetMap = getAllTableSheetExpressionMapping();
-        if (!tableSheetMap.containsKey(tableName)) {
-            return Optional.empty();
-        }
-        return tableSheetMap.get(tableName);
-    }
-
-    private Map<String, Optional<String>> getAllTableSheetExpressionMapping()
+    private Map<String, Optional<String>> getAllTableSheetMapping(Object key)
     {
         ImmutableMap.Builder<String, Optional<String>> tableSheetMap = ImmutableMap.builder();
         List<List<Object>> data = readAllValuesFromSheetExpression(metadataSheetId);
@@ -268,21 +239,29 @@ public class SheetsClient
             return sheetsService.spreadsheets().values().get(sheetId, defaultRange).execute().getValues();
         }
         catch (IOException e) {
-            throw new PrestoException(SHEETS_UNKNOWN_TABLE_ERROR, "Failed reading data from sheet: " + sheetExpression, e);
+            throw new PrestoException(SHEETS_UNKNOWN_TABLE_ERROR, format("Failed reading data from sheet '%s':", sheetExpression), e);
+        }
+    }
+
+    private List<List<Object>> readAllValuesFromSheetDataLocation(SheetDataLocation dataLocation)
+    {
+        try {
+            log.info("Accessing sheet id [%s] with range [%s]", dataLocation.getSheetId(), dataLocation.getTabAndRange());
+            return sheetsService.spreadsheets().values().get(dataLocation.getSheetId(), dataLocation.getTabAndRange()).execute().getValues();
+        }
+        catch (IOException e) {
+            throw new PrestoException(SHEETS_UNKNOWN_TABLE_ERROR, format("Failed reading data from sheet '%s':", dataLocation), e);
         }
     }
 
     private List<Object> readHeaderFromSheetExpression(String sheetExpression)
     {
         try {
-            Matcher matcher = SHEET_REGEX.matcher(sheetExpression);
-            if (!matcher.matches()) {
-                return ImmutableList.of();
-            }
-            String sheetId = requireNonNull(matcher.group("sheetId"), "sheetId is null");
-            Optional<String> tab = Optional.ofNullable(matcher.group("tab"));
-            Optional<String> begin = Optional.ofNullable(matcher.group("begin"));
-            List<List<Object>> values = sheetsService.spreadsheets().values().get(sheetId, getHeaderRange(tab, begin)).execute().getValues();
+            SheetDataLocation dataLocation = parseDataLocationFromSheetExpression(sheetExpression, false);
+            List<List<Object>> values = sheetsService.spreadsheets().values()
+                    .get(dataLocation.getSheetId(), dataLocation.getHeaderTabAndRange())
+                    .execute()
+                    .getValues();
             if (values.isEmpty()) {
                 return ImmutableList.of();
             }
@@ -293,30 +272,30 @@ public class SheetsClient
         }
     }
 
-    public SheetDataLocation parseDataLocation(String tableName)
-    {
-        return parseDataLocation(tableName, false);
-    }
-
-    public SheetDataLocation parseDataLocationNoHeader(String tableName)
-    {
-        return parseDataLocation(tableName, true);
-    }
-
-    private SheetDataLocation parseDataLocation(String tableName, boolean noHeader)
+    public SheetDataLocation parseDataLocation(String tableName, boolean noHeader)
     {
         try {
             requireNonNull(tableName, "sheetExpression is null");
 
-            Optional<String> sheetExpression = tableSheetMappingCache.getUnchecked(tableName);
+            Optional<String> sheetExpression = allTableSheetMappingCache.getUnchecked(ALL_TABLES_KEY).get(tableName);
             if (sheetExpression == null || !sheetExpression.isPresent()) {
                 throw new PrestoException(SHEETS_UNKNOWN_TABLE_ERROR, "Sheet expression not found for table " + tableName);
             }
 
-            Matcher matcher = SHEET_REGEX.matcher(sheetExpression.get());
+            return parseDataLocationFromSheetExpression(sheetExpression.get(), noHeader);
+        }
+        catch (Exception e) {
+            throw new PrestoException(SHEETS_UNKNOWN_TABLE_ERROR, format("Failed to parse '%s':", tableName), e);
+        }
+    }
+
+    private SheetDataLocation parseDataLocationFromSheetExpression(String sheetExpression, boolean noHeader)
+    {
+        try {
+            Matcher matcher = SHEET_REGEX.matcher(sheetExpression);
             checkState(matcher.matches(), "Malformed sheet expression: %s", sheetExpression);
             String sheetId = requireNonNull(matcher.group("sheetId"), "sheetId is null");
-            Optional<String> tab = Optional.ofNullable(matcher.group("tab"));
+            Optional<String> tab = isNullOrEmpty(matcher.group("tab")) ? Optional.empty() : Optional.of(matcher.group("tab"));
             Optional<String> rangeExpression = Optional.ofNullable(matcher.group("range"));
 
             if (tab.isPresent() && rangeExpression.isPresent()) {
@@ -346,8 +325,8 @@ public class SheetsClient
             }
             return new SheetDataLocation(sheetId, tab.get(), range);
         }
-        catch (Exception e) {
-            throw new PrestoException(SHEETS_UNKNOWN_TABLE_ERROR, format("Failed to parse '%s':", tableName), e);
+        catch (IOException e) {
+            throw new UncheckedIOException(e);
         }
     }
 
