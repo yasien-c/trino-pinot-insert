@@ -106,7 +106,8 @@ public class PinotMetadata
             DynamicTable dynamicTable = DynamicTableBuilder.buildFromPql(this, tableName);
             return new PinotTableHandle(tableName.getSchemaName(), dynamicTable.getTableName(), TupleDomain.all(), OptionalLong.empty(), Optional.of(dynamicTable));
         }
-        return new PinotTableHandle(tableName.getSchemaName(), tableName.getTableName());
+        String pinotTableName = pinotClient.getPinotTableNameFromPrestoTableName(tableName.getTableName());
+        return new PinotTableHandle(tableName.getSchemaName(), pinotTableName);
     }
 
     @Override
