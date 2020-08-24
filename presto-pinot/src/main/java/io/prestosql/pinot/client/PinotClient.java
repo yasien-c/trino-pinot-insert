@@ -45,6 +45,8 @@ import io.prestosql.pinot.PinotMetrics;
 import io.prestosql.pinot.PinotSessionProperties;
 import io.prestosql.pinot.query.PinotQuery;
 import io.prestosql.spi.connector.ConnectorSession;
+import io.prestosql.spi.connector.SchemaTableName;
+import io.prestosql.spi.connector.TableNotFoundException;
 import org.apache.pinot.common.response.broker.BrokerResponseNative;
 import org.apache.pinot.common.response.broker.ResultTable;
 import org.apache.pinot.spi.data.Schema;
@@ -60,18 +62,21 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.ExecutionException;
+import java.util.concurrent.Executor;
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.TimeUnit;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
+import static com.google.common.cache.CacheLoader.asyncReloading;
 import static io.airlift.http.client.JsonResponseHandler.createJsonResponseHandler;
 import static io.airlift.json.JsonCodec.listJsonCodec;
 import static io.airlift.json.JsonCodec.mapJsonCodec;
 import static io.prestosql.pinot.PinotErrorCode.PINOT_EXCEPTION;
 import static io.prestosql.pinot.PinotErrorCode.PINOT_INVALID_CONFIGURATION;
 import static io.prestosql.pinot.PinotErrorCode.PINOT_UNABLE_TO_FIND_BROKER;
+import static io.prestosql.pinot.PinotMetadata.SCHEMA_NAME;
 import static io.prestosql.pinot.PinotMetrics.doWithRetries;
 import static java.lang.String.format;
 import static java.util.Objects.requireNonNull;
@@ -84,6 +89,7 @@ public class PinotClient
     private static final Pattern BROKER_PATTERN = Pattern.compile("Broker_(.*)_(\\d+)");
     private static final String TIME_BOUNDARY_NOT_FOUND_ERROR_CODE = "404";
     private static final JsonCodec<Map<String, Map<String, List<String>>>> ROUTING_TABLE_CODEC = mapJsonCodec(String.class, mapJsonCodec(String.class, listJsonCodec(String.class)));
+    private static final Object ALL_TABLES_CACHE_KEY = new Object();
 
     private static final String GET_ALL_TABLES_API_TEMPLATE = "tables";
     private static final String TABLE_INSTANCES_API_TEMPLATE = "tables/%s/instances";
@@ -100,6 +106,7 @@ public class PinotClient
     private final Ticker ticker = Ticker.systemTicker();
 
     private final LoadingCache<String, List<String>> brokersForTableCache;
+    private final LoadingCache<Object, List<String>> allTablesCache;
 
     private final JsonCodec<GetTables> tablesJsonCodec;
     private final JsonCodec<BrokersForTable> brokersForTableJsonCodec;
@@ -113,6 +120,7 @@ public class PinotClient
             PinotHostMapper pinotHostMapper,
             PinotMetrics metrics,
             @ForPinot HttpClient httpClient,
+            @ForPinot Executor executor,
             JsonCodec<GetTables> tablesJsonCodec,
             JsonCodec<BrokersForTable> brokersForTableJsonCodec,
             JsonCodec<TimeBoundary> timeBoundaryJsonCodec,
@@ -133,6 +141,10 @@ public class PinotClient
         this.controllerUrls = config.getControllerUrls();
         this.metrics = requireNonNull(metrics, "metrics is null");
         this.httpClient = requireNonNull(httpClient, "httpClient is null");
+        this.allTablesCache = CacheBuilder.newBuilder()
+                .refreshAfterWrite(config.getMetadataCacheExpiry().roundTo(TimeUnit.MILLISECONDS), TimeUnit.MILLISECONDS)
+                .build(asyncReloading(CacheLoader.from(this::getAllTables), executor));
+        executor.execute(() -> this.allTablesCache.refresh(ALL_TABLES_CACHE_KEY));
         this.brokersForTableCache = CacheBuilder.newBuilder()
                 .expireAfterWrite(config.getMetadataCacheExpiry().roundTo(TimeUnit.MILLISECONDS), TimeUnit.MILLISECONDS)
                 .build((CacheLoader.from(this::getAllBrokersForTable)));
@@ -290,6 +302,8 @@ public class PinotClient
 
     public String getBrokerHost(String table)
     {
+        //TODO: revisit
+        table = getPinotTableNameFromPrestoTableName(table);
         try {
             List<String> brokers = brokersForTableCache.get(table);
             if (brokers.isEmpty()) {
@@ -435,6 +449,41 @@ public class PinotClient
             columnIndicesBuilder.put(columnNames[index], index);
         }
         return columnIndicesBuilder.build();
+    }
+
+    public List<String> getPinotTableNames()
+    {
+        return getFromCache(allTablesCache, ALL_TABLES_CACHE_KEY);
+    }
+
+    public static <K, V> V getFromCache(LoadingCache<K, V> cache, K key)
+    {
+        V value = cache.getIfPresent(key);
+        if (value != null) {
+            return value;
+        }
+        try {
+            return cache.get(key);
+        }
+        catch (ExecutionException e) {
+            throw new PinotException(PinotErrorCode.PINOT_UNCLASSIFIED_ERROR, Optional.empty(), "Cannot fetch from cache " + key, e.getCause());
+        }
+    }
+
+    public String getPinotTableNameFromPrestoTableName(String prestoTableName)
+    {
+        List<String> allTables = getPinotTableNames();
+        String pinotTableName = null;
+        for (String candidate : allTables) {
+            if (prestoTableName.equalsIgnoreCase(candidate)) {
+                pinotTableName = candidate;
+                break;
+            }
+        }
+        if (pinotTableName == null) {
+            throw new TableNotFoundException(new SchemaTableName(SCHEMA_NAME, prestoTableName));
+        }
+        return pinotTableName;
     }
 
     private BrokerResponseNative submitBrokerQueryJson(ConnectorSession session, PinotQuery query)

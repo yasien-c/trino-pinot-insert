@@ -36,7 +36,6 @@ import io.prestosql.spi.connector.ConstraintApplicationResult;
 import io.prestosql.spi.connector.LimitApplicationResult;
 import io.prestosql.spi.connector.SchemaTableName;
 import io.prestosql.spi.connector.SchemaTablePrefix;
-import io.prestosql.spi.connector.TableNotFoundException;
 import io.prestosql.spi.predicate.TupleDomain;
 import org.apache.pinot.spi.data.Schema;
 
@@ -46,7 +45,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.OptionalLong;
-import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Executor;
 import java.util.concurrent.TimeUnit;
 
@@ -54,6 +52,7 @@ import static com.google.common.base.Preconditions.checkState;
 import static com.google.common.cache.CacheLoader.asyncReloading;
 import static com.google.common.collect.ImmutableList.toImmutableList;
 import static io.prestosql.pinot.PinotColumn.getPinotColumnsForPinotSchema;
+import static io.prestosql.pinot.client.PinotClient.getFromCache;
 import static io.prestosql.pinot.query.DynamicTableBuilder.BIGINT_AGGREGATIONS;
 import static io.prestosql.pinot.query.DynamicTableBuilder.DOUBLE_AGGREGATIONS;
 import static io.prestosql.spi.type.BigintType.BIGINT;
@@ -64,12 +63,12 @@ import static java.util.Objects.requireNonNull;
 public class PinotMetadata
         implements ConnectorMetadata
 {
+    public static final String SCHEMA_NAME = "default";
     private static final Object ALL_TABLES_CACHE_KEY = new Object();
-    private static final String SCHEMA_NAME = "default";
     private static final String PINOT_COLUMN_NAME_PROPERTY = "pinotColumnName";
 
+    private final PinotClient pinotClient;
     private final LoadingCache<String, List<PinotColumn>> pinotTableColumnCache;
-    private final LoadingCache<Object, List<String>> allTablesCache;
 
     @Inject
     public PinotMetadata(
@@ -79,9 +78,7 @@ public class PinotMetadata
     {
         requireNonNull(pinotConfig, "pinot config");
         long metadataCacheExpiryMillis = pinotConfig.getMetadataCacheExpiry().roundTo(TimeUnit.MILLISECONDS);
-        this.allTablesCache = CacheBuilder.newBuilder()
-                .refreshAfterWrite(metadataCacheExpiryMillis, TimeUnit.MILLISECONDS)
-                .build(asyncReloading(CacheLoader.from(pinotClient::getAllTables), executor));
+        this.pinotClient = requireNonNull(pinotClient, "pinotClient is null");
         this.pinotTableColumnCache =
                 CacheBuilder.newBuilder()
                         .refreshAfterWrite(metadataCacheExpiryMillis, TimeUnit.MILLISECONDS)
@@ -95,8 +92,6 @@ public class PinotMetadata
                                 return getPinotColumnsForPinotSchema(tablePinotSchema);
                             }
                         }, executor));
-
-        executor.execute(() -> this.allTablesCache.refresh(ALL_TABLES_CACHE_KEY));
     }
 
     @Override
@@ -149,7 +144,7 @@ public class PinotMetadata
     public List<SchemaTableName> listTables(ConnectorSession session, Optional<String> schemaNameOrNull)
     {
         ImmutableList.Builder<SchemaTableName> builder = ImmutableList.builder();
-        for (String table : getPinotTableNames()) {
+        for (String table : pinotClient.getPinotTableNames()) {
             builder.add(new SchemaTableName(SCHEMA_NAME, table));
         }
         return builder.build();
@@ -276,43 +271,8 @@ public class PinotMetadata
     @VisibleForTesting
     public List<PinotColumn> getPinotColumns(String tableName)
     {
-        String pinotTableName = getPinotTableNameFromPrestoTableName(tableName);
+        String pinotTableName = pinotClient.getPinotTableNameFromPrestoTableName(tableName);
         return getFromCache(pinotTableColumnCache, pinotTableName);
-    }
-
-    private List<String> getPinotTableNames()
-    {
-        return getFromCache(allTablesCache, ALL_TABLES_CACHE_KEY);
-    }
-
-    private static <K, V> V getFromCache(LoadingCache<K, V> cache, K key)
-    {
-        V value = cache.getIfPresent(key);
-        if (value != null) {
-            return value;
-        }
-        try {
-            return cache.get(key);
-        }
-        catch (ExecutionException e) {
-            throw new PinotException(PinotErrorCode.PINOT_UNCLASSIFIED_ERROR, Optional.empty(), "Cannot fetch from cache " + key, e.getCause());
-        }
-    }
-
-    private String getPinotTableNameFromPrestoTableName(String prestoTableName)
-    {
-        List<String> allTables = getPinotTableNames();
-        String pinotTableName = null;
-        for (String candidate : allTables) {
-            if (prestoTableName.equalsIgnoreCase(candidate)) {
-                pinotTableName = candidate;
-                break;
-            }
-        }
-        if (pinotTableName == null) {
-            throw new TableNotFoundException(new SchemaTableName(SCHEMA_NAME, prestoTableName));
-        }
-        return pinotTableName;
     }
 
     private Map<String, ColumnHandle> getDynamicTableColumnHandles(PinotTableHandle pinotTableHandle)
