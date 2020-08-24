@@ -17,6 +17,7 @@ import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableSet;
 import io.prestosql.pinot.PinotColumnHandle;
 import io.prestosql.pinot.PinotMetadata;
+import io.prestosql.pinot.client.PinotClient;
 import io.prestosql.spi.connector.ColumnHandle;
 import io.prestosql.spi.connector.ColumnNotFoundException;
 import io.prestosql.spi.connector.SchemaTableName;
@@ -51,14 +52,15 @@ public final class DynamicTableBuilder
     {
     }
 
-    public static DynamicTable buildFromPql(PinotMetadata pinotMetadata, SchemaTableName schemaTableName)
+    public static DynamicTable buildFromPql(PinotMetadata pinotMetadata, PinotClient pinotClient, SchemaTableName schemaTableName)
     {
         requireNonNull(pinotMetadata, "pinotMetadata is null");
         requireNonNull(schemaTableName, "schemaTableName is null");
         String query = schemaTableName.getTableName();
         BrokerRequest request = REQUEST_COMPILER.compileToBrokerRequest(query);
-        String pinotTableName = stripSuffix(request.getQuerySource().getTableName());
-        Optional<String> suffix = getSuffix(request.getQuerySource().getTableName());
+        String tableName = request.getQuerySource().getTableName();
+        String pinotTableName = pinotClient.getPinotTableNameFromPrestoTableName(stripSuffix(tableName));
+        Optional<String> suffix = getSuffix(tableName);
 
         Map<String, ColumnHandle> columnHandles = pinotMetadata.getPinotColumnHandles(pinotTableName);
         List<String> selectionColumns = ImmutableList.of();
@@ -200,5 +202,15 @@ public final class DynamicTableBuilder
         else {
             return Optional.empty();
         }
+    }
+
+    private static String getFullTableName(String baseTableName, Optional<String> suffix)
+    {
+        requireNonNull(baseTableName, "baseTableName is null");
+        requireNonNull(suffix, "suffix is null");
+        if (suffix.isPresent()) {
+            return format("%s_%s", baseTableName, suffix.get());
+        }
+        return baseTableName;
     }
 }
