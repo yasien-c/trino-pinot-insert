@@ -80,7 +80,7 @@ import static io.prestosql.pinot.PinotMetadata.SCHEMA_NAME;
 import static io.prestosql.pinot.PinotMetrics.doWithRetries;
 import static java.lang.String.format;
 import static java.util.Objects.requireNonNull;
-import static org.apache.pinot.common.config.TableNameBuilder.extractRawTableName;
+import static org.apache.pinot.spi.utils.builder.TableNameBuilder.extractRawTableName;
 
 public class PinotClient
 {
