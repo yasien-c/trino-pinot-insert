@@ -470,7 +470,7 @@ public class PinotClient
         }
     }
 
-    public String getPinotTableNameFromPrestoTableName(String prestoTableName)
+    public String getPinotTableNameFromPrestoTableNameIfExists(String prestoTableName)
     {
         List<String> allTables = getPinotTableNames();
         String pinotTableName = null;
@@ -480,6 +480,12 @@ public class PinotClient
                 break;
             }
         }
+        return pinotTableName;
+    }
+
+    public String getPinotTableNameFromPrestoTableName(String prestoTableName)
+    {
+        String pinotTableName = getPinotTableNameFromPrestoTableNameIfExists(prestoTableName);
         if (pinotTableName == null) {
             throw new TableNotFoundException(new SchemaTableName(SCHEMA_NAME, prestoTableName));
         }
