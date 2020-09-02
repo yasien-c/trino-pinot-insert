@@ -14,16 +14,20 @@
 package io.prestosql.pinot;
 
 import com.google.common.collect.ImmutableMap;
+import com.google.common.net.HostAndPort;
 import com.google.inject.Module;
 import io.airlift.log.Logger;
 import io.airlift.log.Logging;
 import io.prestosql.Session;
 import io.prestosql.metadata.SessionPropertyManager;
+import io.prestosql.pinot.client.PinotHostMapper;
+import io.prestosql.pinot.util.TestingPinotHostMapper;
 import io.prestosql.testing.DistributedQueryRunner;
 
 import java.util.Map;
 import java.util.Optional;
 
+import static com.google.inject.multibindings.OptionalBinder.newOptionalBinder;
 import static io.prestosql.testing.TestingSession.testSessionBuilder;
 
 public class PinotQueryRunner
@@ -59,11 +63,12 @@ public class PinotQueryRunner
         Logging.initialize();
         Map<String, String> properties = ImmutableMap.of("http-server.http.port", "8080");
         Map<String, String> pinotProperties = ImmutableMap.<String, String>builder()
-                .put("pinot.controller-urls", "localhost:9000")
+                .put("pinot.controller-urls", "localhost:33374")
                 .put("pinot.segments-per-split", "10")
                 .put("pinot.request-timeout", "3m")
                 .build();
-        DistributedQueryRunner queryRunner = createPinotQueryRunner(properties, pinotProperties, Optional.empty());
+        DistributedQueryRunner queryRunner = createPinotQueryRunner(properties, pinotProperties, Optional.of(binder -> newOptionalBinder(binder, PinotHostMapper.class).setBinding()
+                .toInstance(new TestingPinotHostMapper(HostAndPort.fromParts("localhost", 33380), HostAndPort.fromParts("localhost", 33386)))));
         Thread.sleep(10);
         Logger log = Logger.get(PinotQueryRunner.class);
         log.info("======== SERVER STARTED ========");
