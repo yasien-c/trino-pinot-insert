@@ -55,6 +55,7 @@ import static io.prestosql.pinot.PinotColumn.getPinotColumnsForPinotSchema;
 import static io.prestosql.pinot.client.PinotClient.getFromCache;
 import static io.prestosql.pinot.query.DynamicTableBuilder.BIGINT_AGGREGATIONS;
 import static io.prestosql.pinot.query.DynamicTableBuilder.DOUBLE_AGGREGATIONS;
+import static io.prestosql.pinot.table.PrestoToPinotSchemaConverter.convert;
 import static io.prestosql.spi.type.BigintType.BIGINT;
 import static io.prestosql.spi.type.DoubleType.DOUBLE;
 import static java.util.Locale.ENGLISH;
@@ -91,6 +92,12 @@ public class PinotMetadata
                                 return getPinotColumnsForPinotSchema(tablePinotSchema);
                             }
                         }, executor));
+    }
+
+    @Override
+    public void createTable(ConnectorSession session, ConnectorTableMetadata tableMetadata, boolean ignoreExisting)
+    {
+        Schema schema = convert(tableMetadata);
     }
 
     @Override

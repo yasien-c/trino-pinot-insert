@@ -39,6 +39,7 @@ public class PinotConnector
     private final PinotPageSourceProvider pageSourceProvider;
     private final PinotNodePartitioningProvider partitioningProvider;
     private final PinotSessionProperties sessionProperties;
+    private final List<PropertyMetadata<?>> tableProperties;
 
     @Inject
     public PinotConnector(
@@ -47,7 +48,8 @@ public class PinotConnector
             PinotSplitManager splitManager,
             PinotPageSourceProvider pageSourceProvider,
             PinotNodePartitioningProvider partitioningProvider,
-            PinotSessionProperties pinotSessionProperties)
+            PinotSessionProperties pinotSessionProperties,
+            PinotTableProperties tableProperties)
     {
         this.lifeCycleManager = requireNonNull(lifeCycleManager, "lifeCycleManager is null");
         this.metadata = requireNonNull(metadata, "metadata is null");
@@ -55,6 +57,7 @@ public class PinotConnector
         this.pageSourceProvider = requireNonNull(pageSourceProvider, "pageSourceProvider is null");
         this.partitioningProvider = requireNonNull(partitioningProvider, "partitioningProvider is null");
         this.sessionProperties = requireNonNull(pinotSessionProperties, "sessionProperties is null");
+        this.tableProperties = requireNonNull(tableProperties, "tableProperties is null").getTableProperties();
     }
 
     @Override
@@ -91,6 +94,12 @@ public class PinotConnector
     public List<PropertyMetadata<?>> getSessionProperties()
     {
         return ImmutableList.copyOf(sessionProperties.getSessionProperties());
+    }
+
+    @Override
+    public List<PropertyMetadata<?>> getTableProperties()
+    {
+        return tableProperties;
     }
 
     @Override
