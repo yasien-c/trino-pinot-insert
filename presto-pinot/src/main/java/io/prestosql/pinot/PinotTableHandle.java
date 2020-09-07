@@ -16,11 +16,13 @@ package io.prestosql.pinot;
 import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import io.prestosql.pinot.query.DynamicTable;
+import io.prestosql.pinot.table.PinotTimeFieldSpec;
 import io.prestosql.spi.connector.ColumnHandle;
 import io.prestosql.spi.connector.ConnectorTableHandle;
 import io.prestosql.spi.connector.SchemaTableName;
 import io.prestosql.spi.predicate.TupleDomain;
 
+import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.OptionalLong;
@@ -36,10 +38,17 @@ public class PinotTableHandle
     private final TupleDomain<ColumnHandle> constraint;
     private final OptionalLong limit;
     private final Optional<DynamicTable> query;
+    private final Optional<List<String>> nodes;
+    private final Optional<PinotTimeFieldSpec> timeFieldSpec;
 
     public PinotTableHandle(String schemaName, String tableName)
     {
-        this(schemaName, tableName, TupleDomain.all(), OptionalLong.empty(), Optional.empty());
+        this(schemaName, tableName, TupleDomain.all(), OptionalLong.empty(), Optional.empty(), Optional.empty(), Optional.empty());
+    }
+
+    public PinotTableHandle(String schemaName, String tableName, Optional<List<String>> nodes, Optional<PinotTimeFieldSpec> timeFieldSpec)
+    {
+        this(schemaName, tableName, TupleDomain.all(), OptionalLong.empty(), Optional.empty(), nodes, timeFieldSpec);
     }
 
     @JsonCreator
@@ -48,7 +57,9 @@ public class PinotTableHandle
             @JsonProperty("tableName") String tableName,
             @JsonProperty("constraint") TupleDomain<ColumnHandle> constraint,
             @JsonProperty("limit") OptionalLong limit,
-            @JsonProperty("query") Optional<DynamicTable> query)
+            @JsonProperty("query") Optional<DynamicTable> query,
+            @JsonProperty("nodes") Optional<List<String>> nodes,
+            @JsonProperty("timeFieldSpec") Optional<PinotTimeFieldSpec> timeFieldSpec)
 
     {
         this.schemaName = requireNonNull(schemaName, "schemaName is null");
@@ -56,6 +67,8 @@ public class PinotTableHandle
         this.constraint = requireNonNull(constraint, "constraint is null");
         this.limit = requireNonNull(limit, "limit is null");
         this.query = requireNonNull(query, "query is null");
+        this.nodes = requireNonNull(nodes, "nodes is null");
+        this.timeFieldSpec = requireNonNull(timeFieldSpec, "timeFieldSpec is null");
     }
 
     @JsonProperty
@@ -86,6 +99,18 @@ public class PinotTableHandle
     public Optional<DynamicTable> getQuery()
     {
         return query;
+    }
+
+    @JsonProperty
+    public Optional<List<String>> getNodes()
+    {
+        return nodes;
+    }
+
+    @JsonProperty
+    public Optional<PinotTimeFieldSpec> getTimeFieldSpec()
+    {
+        return timeFieldSpec;
     }
 
     public SchemaTableName toSchemaTableName()
@@ -122,6 +147,7 @@ public class PinotTableHandle
                 .add("constraint", constraint)
                 .add("limit", limit)
                 .add("query", query)
+                .add("nodes", nodes)
                 .toString();
     }
 }

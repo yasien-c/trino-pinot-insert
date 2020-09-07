@@ -50,6 +50,9 @@ public class PinotConfig
     private int fetchRetryCount = 2;
     private int nonAggregateLimitForBrokerQueries = 25_000;
     private int maxRowsPerSplitForSegmentQueries = 50_000;
+    private String segmentCreationBaseDirectory = "/tmp";
+    private List<String> kafkaBrokers = ImmutableList.of();
+    private String schemaRegistryUrl = "";
 
     @NotNull
     public List<String> getControllerUrls()
@@ -256,5 +259,41 @@ public class PinotConfig
     {
         this.maxRowsPerSplitForSegmentQueries = maxRowsPerSplitForSegmentQueries;
         return this;
+    }
+
+    @Config("pinot.segment-creation-base-directory")
+    public PinotConfig setSegmentCreationBaseDirectory(String segmentCreationBaseDirectory)
+    {
+        this.segmentCreationBaseDirectory = segmentCreationBaseDirectory;
+        return this;
+    }
+
+    public String getSegmentCreationBaseDirectory()
+    {
+        return segmentCreationBaseDirectory;
+    }
+
+    @Config("pinot.default-kafka-brokers")
+    public PinotConfig setDefaultKafkaBrokers(String kafkaBrokers)
+    {
+        this.kafkaBrokers = LIST_SPLITTER.splitToList(kafkaBrokers);
+        return this;
+    }
+
+    public List<String> getDefaultKafkaBrokers()
+    {
+        return kafkaBrokers;
+    }
+
+    @Config("pinot.default-schema-registry-url")
+    public PinotConfig setDefaultSchemaRegistryUrl(String schemaRegistryUrl)
+    {
+        this.schemaRegistryUrl = schemaRegistryUrl;
+        return this;
+    }
+
+    public String getDefaultSchemaRegistryUrl()
+    {
+        return schemaRegistryUrl;
     }
 }

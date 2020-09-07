@@ -16,6 +16,7 @@ package io.prestosql.pinot.client;
 import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.databind.DeserializationFeature;
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.common.annotations.VisibleForTesting;
 import com.google.common.base.Ticker;
@@ -25,6 +26,7 @@ import com.google.common.cache.LoadingCache;
 import com.google.common.collect.AbstractIterator;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
+import com.google.common.net.HostAndPort;
 import com.google.common.net.HttpHeaders;
 import io.airlift.http.client.HttpClient;
 import io.airlift.http.client.JsonResponseHandler;
@@ -49,12 +51,15 @@ import io.prestosql.spi.connector.SchemaTableName;
 import io.prestosql.spi.connector.TableNotFoundException;
 import org.apache.pinot.common.response.broker.BrokerResponseNative;
 import org.apache.pinot.common.response.broker.ResultTable;
+import org.apache.pinot.common.utils.FileUploadDownloadClient;
+import org.apache.pinot.common.utils.SimpleHttpResponse;
+import org.apache.pinot.spi.config.table.TableConfig;
 import org.apache.pinot.spi.data.Schema;
+import org.apache.pinot.spi.utils.JsonUtils;
 
 import javax.inject.Inject;
 
 import java.net.URI;
-import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Iterator;
@@ -69,8 +74,10 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
+import static com.google.common.base.Preconditions.checkState;
 import static com.google.common.cache.CacheLoader.asyncReloading;
 import static io.airlift.http.client.JsonResponseHandler.createJsonResponseHandler;
+import static io.airlift.json.JsonCodec.jsonCodec;
 import static io.airlift.json.JsonCodec.listJsonCodec;
 import static io.airlift.json.JsonCodec.mapJsonCodec;
 import static io.prestosql.pinot.PinotErrorCode.PINOT_EXCEPTION;
@@ -79,6 +86,7 @@ import static io.prestosql.pinot.PinotErrorCode.PINOT_UNABLE_TO_FIND_BROKER;
 import static io.prestosql.pinot.PinotMetadata.SCHEMA_NAME;
 import static io.prestosql.pinot.PinotMetrics.doWithRetries;
 import static java.lang.String.format;
+import static java.nio.charset.StandardCharsets.UTF_8;
 import static java.util.Objects.requireNonNull;
 import static org.apache.pinot.spi.utils.builder.TableNameBuilder.extractRawTableName;
 
@@ -90,6 +98,8 @@ public class PinotClient
     private static final String TIME_BOUNDARY_NOT_FOUND_ERROR_CODE = "404";
     private static final JsonCodec<Map<String, Map<String, List<String>>>> ROUTING_TABLE_CODEC = mapJsonCodec(String.class, mapJsonCodec(String.class, listJsonCodec(String.class)));
     private static final Object ALL_TABLES_CACHE_KEY = new Object();
+    private static final JsonCodec<PinotSuccessResponse> PINOT_SUCCESS_RESPONSE_JSON_CODEC = jsonCodec(PinotSuccessResponse.class);
+    private static final JsonCodec<List<String>> LIST_JSON_CODEC = listJsonCodec(String.class);
 
     private static final String GET_ALL_TABLES_API_TEMPLATE = "tables";
     private static final String TABLE_INSTANCES_API_TEMPLATE = "tables/%s/instances";
@@ -98,6 +108,7 @@ public class PinotClient
     private static final String TIME_BOUNDARY_API_TEMPLATE = "debug/timeBoundary/%s";
     private static final String REQUEST_PAYLOAD_TEMPLATE = "{\"sql\" : \"%s\" }";
     private static final String QUERY_URL_TEMPLATE = "http://%s/query/sql";
+    private static final String SCHEMAS_API_TEMPLATE = "schemas?override=true";
 
     private final List<String> controllerUrls;
     private final PinotMetrics metrics;
@@ -113,6 +124,7 @@ public class PinotClient
     private final JsonCodec<TimeBoundary> timeBoundaryJsonCodec;
     private final JsonCodec<Schema> schemaJsonCodec;
     private final JsonCodec<BrokerResponseNative> brokerResponseCodec;
+    private final FileUploadDownloadClient fileUploadDownloadClient;
 
     @Inject
     public PinotClient(
@@ -148,6 +160,7 @@ public class PinotClient
         this.brokersForTableCache = CacheBuilder.newBuilder()
                 .expireAfterWrite(config.getMetadataCacheExpiry().roundTo(TimeUnit.MILLISECONDS), TimeUnit.MILLISECONDS)
                 .build((CacheLoader.from(this::getAllBrokersForTable)));
+        this.fileUploadDownloadClient = new FileUploadDownloadClient();
     }
 
     public static JsonCodecBinder addJsonBinders(JsonCodecBinder jsonCodecBinder)
@@ -165,7 +178,7 @@ public class PinotClient
         requestBuilder.setHeader(HttpHeaders.ACCEPT, APPLICATION_JSON);
         if (requestBody.isPresent()) {
             requestBuilder.setHeader(HttpHeaders.CONTENT_TYPE, APPLICATION_JSON);
-            requestBuilder.setBodyGenerator(StaticBodyGenerator.createStaticBodyGenerator(requestBody.get(), StandardCharsets.UTF_8));
+            requestBuilder.setBodyGenerator(StaticBodyGenerator.createStaticBodyGenerator(requestBody.get(), UTF_8));
         }
         Request request = requestBuilder.build();
         JsonResponseHandler<T> responseHandler = createJsonResponseHandler(codec);
@@ -202,6 +215,15 @@ public class PinotClient
                 codec);
     }
 
+    private <T> T sendHttpPostToControllerJson(String path, JsonCodec<T> codec, Optional<String> body)
+    {
+        return doHttpActionWithHeadersJson(
+                Request.builder().preparePost()
+                        .setUri(URI.create(format("http://%s/%s", getControllerUrl(), path))),
+                body,
+                codec);
+    }
+
     private <T> T sendHttpGetToBrokerJson(String table, String path, JsonCodec<T> codec)
     {
         return doHttpActionWithHeadersJson(
@@ -213,6 +235,40 @@ public class PinotClient
     private String getControllerUrl()
     {
         return controllerUrls.get(ThreadLocalRandom.current().nextInt(controllerUrls.size()));
+    }
+
+    public TableConfig getTableConfig(String tableName, boolean isOffline)
+    {
+        try {
+            String type = isOffline ? "OFFLINE" : "REALTIME";
+            HostAndPort controllerHostAndPort = HostAndPort.fromString(getControllerUrl());
+            SimpleHttpResponse response = fileUploadDownloadClient.sendGetRequest(
+                    FileUploadDownloadClient.getRetrieveTableConfigHttpURI(
+                            controllerHostAndPort.getHost(), controllerHostAndPort.getPort(), tableName));
+            JsonNode offlineJsonTableConfig = JsonUtils.stringToJsonNode(response.getResponse()).get(type);
+            requireNonNull(offlineJsonTableConfig, "offlineJsonTableConfig is null");
+            return JsonUtils.jsonNodeToObject(offlineJsonTableConfig, TableConfig.class);
+        }
+        catch (Exception e) {
+            // TODO: throw presto exception
+            throw new RuntimeException(e);
+        }
+    }
+
+    public Schema getSchema(String tableName)
+    {
+        try {
+            HostAndPort controllerHostAndPort = HostAndPort.fromString(getControllerUrl());
+            SimpleHttpResponse response =
+                    fileUploadDownloadClient.sendGetRequest(
+                            FileUploadDownloadClient.getRetrieveSchemaHttpURI(
+                                    controllerHostAndPort.getHost(), controllerHostAndPort.getPort(), tableName));
+            return Schema.fromString(response.getResponse());
+        }
+        catch (Exception e) {
+            // TODO: throw presto exception
+            throw new RuntimeException(e);
+        }
     }
 
     public static class GetTables
@@ -237,7 +293,6 @@ public class PinotClient
     }
 
     public Schema getTableSchema(String table)
-            throws Exception
     {
         return sendHttpGetToControllerJson(format(TABLE_SCHEMA_API_TEMPLATE, table), schemaJsonCodec);
     }
@@ -492,10 +547,33 @@ public class PinotClient
         return pinotTableName;
     }
 
+    public void createSchema(Schema schema)
+    {
+        PinotSuccessResponse response = sendHttpPostToControllerJson(SCHEMAS_API_TEMPLATE, PINOT_SUCCESS_RESPONSE_JSON_CODEC, Optional.of(schema.toString()));
+        checkState(response.getStatus().equals(format("%s successfully added", schema.getSchemaName())), "Unexpected response: '%s'", response.getStatus());
+        verifySchema(schema.getSchemaName());
+    }
+
+    private void verifySchema(String tableName)
+    {
+        doWithRetries(10, attempt -> {
+            List<String> schemas = sendHttpGetToControllerJson(SCHEMAS_API_TEMPLATE, LIST_JSON_CODEC);
+            checkState(schemas.contains(tableName), format("Schema for '%s' not found", tableName));
+            return null;
+        });
+    }
+
+    public void createTable(TableConfig tableConfig)
+    {
+        PinotSuccessResponse response = sendHttpPostToControllerJson(GET_ALL_TABLES_API_TEMPLATE, PINOT_SUCCESS_RESPONSE_JSON_CODEC, Optional.of(tableConfig.toJsonString()));
+        checkState(response.getStatus().equals(format("Table %s succesfully added", tableConfig.getTableName())), "Unexpected response: '%s'", response.getStatus());
+        allTablesCache.refresh(ALL_TABLES_CACHE_KEY);
+    }
+
     private BrokerResponseNative submitBrokerQueryJson(ConnectorSession session, PinotQuery query)
     {
         return doWithRetries(PinotSessionProperties.getPinotRetryCount(session), retryNumber -> {
-            String queryHost = getBrokerHost(query.getTable());
+             String queryHost = getBrokerHost(query.getTable());
             LOG.info("Query '%s' on broker host '%s'", queryHost, query.getQuery());
             Request.Builder builder = Request.builder()
                     .preparePost()
@@ -549,5 +627,22 @@ public class PinotClient
             indices[i] = columnIndices.get(columnHandles.get(i).getColumnName());
         }
         return new ResultsIterator(resultTable, indices);
+    }
+
+    public static class PinotSuccessResponse
+    {
+        private final String status;
+
+        @JsonCreator
+        public PinotSuccessResponse(@JsonProperty("status") String status)
+        {
+            this.status = requireNonNull(status, "status is null");
+        }
+
+        @JsonProperty
+        public String getStatus()
+        {
+            return status;
+        }
     }
 }

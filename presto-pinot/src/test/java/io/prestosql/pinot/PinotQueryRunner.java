@@ -40,7 +40,7 @@ public class PinotQueryRunner
             throws Exception
     {
         DistributedQueryRunner queryRunner = DistributedQueryRunner.builder(createSession("default"))
-                .setNodeCount(2)
+                .setNodeCount(3)
                 .setExtraProperties(extraProperties)
                 .build();
         queryRunner.installPlugin(new PinotPlugin(extension));
@@ -63,12 +63,14 @@ public class PinotQueryRunner
         Logging.initialize();
         Map<String, String> properties = ImmutableMap.of("http-server.http.port", "8080");
         Map<String, String> pinotProperties = ImmutableMap.<String, String>builder()
-                .put("pinot.controller-urls", "localhost:33374")
+                .put("pinot.controller-urls", "localhost:34560")
                 .put("pinot.segments-per-split", "10")
                 .put("pinot.request-timeout", "3m")
+                .put("pinot.default-kafka-brokers", "kafka:9092")
+                .put("pinot.default-schema-registry-url", "http://schema-registry:8081")
                 .build();
         DistributedQueryRunner queryRunner = createPinotQueryRunner(properties, pinotProperties, Optional.of(binder -> newOptionalBinder(binder, PinotHostMapper.class).setBinding()
-                .toInstance(new TestingPinotHostMapper(HostAndPort.fromParts("localhost", 33380), HostAndPort.fromParts("localhost", 33386)))));
+                .toInstance(new TestingPinotHostMapper(HostAndPort.fromParts("localhost", 34566), HostAndPort.fromParts("localhost", 34572)))));
         Thread.sleep(10);
         Logger log = Logger.get(PinotQueryRunner.class);
         log.info("======== SERVER STARTED ========");
