@@ -35,10 +35,12 @@ import static io.trino.plugin.pinot.query.DynamicTableBuilder.buildFromPql;
 import static io.trino.plugin.pinot.query.DynamicTablePqlExtractor.extractPql;
 import static io.trino.spi.type.VarcharType.VARCHAR;
 import static java.lang.String.format;
+import static java.lang.String.join;
 import static java.util.Locale.ENGLISH;
 import static java.util.stream.Collectors.joining;
 import static java.util.stream.Collectors.toList;
 import static org.testng.Assert.assertEquals;
+import static org.testng.Assert.assertTrue;
 
 public class TestDynamicTable
         extends TestPinotQueryBase
@@ -55,8 +57,7 @@ public class TestDynamicTable
                 .collect(toList());
         long limit = 230;
         String query = format("select %s from %s order by %s limit %s",
-                columnNames.stream()
-                        .collect(joining(", ")),
+                join(", ", columnNames),
                 tableName,
                 orderByColumns.stream()
                         .collect(joining(", ")) + " desc",
@@ -68,6 +69,7 @@ public class TestDynamicTable
                 columnNames);
         orderByExpressions.add(new OrderByExpression(quoteIdentifier(orderByColumns.get(4)), false));
         assertEquals(dynamicTable.getOrderBy(), orderByExpressions);
+        assertTrue(dynamicTable.getLimit().isPresent());
         assertEquals(dynamicTable.getLimit().getAsLong(), limit);
     }
 
@@ -85,6 +87,7 @@ public class TestDynamicTable
                         .add("Origin")
                         .add("AirlineID")
                         .build());
+        assertTrue(dynamicTable.getLimit().isPresent());
         assertEquals(dynamicTable.getLimit().getAsLong(), limit);
     }
 
