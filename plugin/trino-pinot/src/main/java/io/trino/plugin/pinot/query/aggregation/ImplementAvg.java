@@ -18,6 +18,7 @@ import io.trino.matching.Capture;
 import io.trino.matching.Captures;
 import io.trino.matching.Pattern;
 import io.trino.plugin.base.aggregation.AggregateFunctionRule;
+import io.trino.plugin.pinot.PinotColumnHandle;
 import io.trino.plugin.pinot.query.AggregateExpression;
 import io.trino.spi.connector.AggregateFunction;
 import io.trino.spi.expression.Variable;
@@ -58,6 +59,7 @@ public class ImplementAvg
     public Optional<AggregateExpression> rewrite(AggregateFunction aggregateFunction, Captures captures, RewriteContext context)
     {
         Variable argument = captures.get(ARGUMENT);
-        return Optional.of(new AggregateExpression(aggregateFunction.getFunctionName(), context.getIdentifierQuote().apply(argument.getName()), true));
+        PinotColumnHandle columnHandle = (PinotColumnHandle) context.getAssignment(argument.getName());
+        return Optional.of(new AggregateExpression(aggregateFunction.getFunctionName(), context.getIdentifierQuote().apply(columnHandle.getColumnName()), true));
     }
 }
