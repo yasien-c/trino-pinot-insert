@@ -79,6 +79,9 @@ public abstract class AbstractPinotIntegrationSmokeTest
     private static final String MIXED_CASE_DISTINCT_TABLE = "mixed_case_distinct";
     private static final String TOO_MANY_ROWS_TABLE = "too_many_rows";
     private static final String TOO_MANY_BROKER_ROWS_TABLE = "too_many_broker_rows";
+    private static final String MIXED_CASE_TABLE_NAME = "mixedCase";
+    private static final String DUPLICATE_TABLE_LOWERCASE = "dup_table";
+    private static final String DUPLICATE_TABLE_MIXED_CASE = "dup_Table";
     private static final String JSON_TABLE = "my_table";
     private static final String RESERVED_KEYWORD_TABLE = "reserved_keyword";
     private static final String QUOTES_IN_COLUMN_NAME_TABLE = "quotes_in_column_name";
@@ -188,6 +191,10 @@ public abstract class AbstractPinotIntegrationSmokeTest
         pinot.createSchema(getClass().getClassLoader().getResourceAsStream("mixed_case_distinct_schema.json"), MIXED_CASE_DISTINCT_TABLE);
         pinot.addRealTimeTable(getClass().getClassLoader().getResourceAsStream("mixed_case_distinct_realtimeSpec.json"), MIXED_CASE_DISTINCT_TABLE);
 
+        // Create mixed case table name, populated from the mixed case topic
+        pinot.createSchema(getClass().getClassLoader().getResourceAsStream("mixed_case_table_name_schema.json"), MIXED_CASE_TABLE_NAME);
+        pinot.addRealTimeTable(getClass().getClassLoader().getResourceAsStream("mixed_case_table_name_realtimeSpec.json"), MIXED_CASE_TABLE_NAME);
+
         // Create and populate too many rows table and topic
         kafka.createTopic(TOO_MANY_ROWS_TABLE);
         Schema tooManyRowsAvroSchema = SchemaBuilder.record(TOO_MANY_ROWS_TABLE).fields()
@@ -226,6 +233,15 @@ public abstract class AbstractPinotIntegrationSmokeTest
         kafka.sendMessages(tooManyBrokerRowsRecordsBuilder.build().stream(), schemaRegistryAwareProducer(kafka));
         pinot.createSchema(getClass().getClassLoader().getResourceAsStream("too_many_broker_rows_schema.json"), TOO_MANY_BROKER_ROWS_TABLE);
         pinot.addRealTimeTable(getClass().getClassLoader().getResourceAsStream("too_many_broker_rows_realtimeSpec.json"), TOO_MANY_BROKER_ROWS_TABLE);
+
+        // Create the duplicate tables and topics
+        kafka.createTopic(DUPLICATE_TABLE_LOWERCASE);
+        pinot.createSchema(getClass().getClassLoader().getResourceAsStream("dup_table_lower_case_schema.json"), DUPLICATE_TABLE_LOWERCASE);
+        pinot.addRealTimeTable(getClass().getClassLoader().getResourceAsStream("dup_table_lower_case_realtimeSpec.json"), DUPLICATE_TABLE_LOWERCASE);
+
+        kafka.createTopic(DUPLICATE_TABLE_MIXED_CASE);
+        pinot.createSchema(getClass().getClassLoader().getResourceAsStream("dup_table_mixed_case_schema.json"), DUPLICATE_TABLE_MIXED_CASE);
+        pinot.addRealTimeTable(getClass().getClassLoader().getResourceAsStream("dup_table_mixed_case_realtimeSpec.json"), DUPLICATE_TABLE_MIXED_CASE);
 
         // Create and populate date time fields table and topic
         kafka.createTopic(DATE_TIME_FIELDS_TABLE);
@@ -746,6 +762,51 @@ public abstract class AbstractPinotIntegrationSmokeTest
                         "  (VARCHAR 'string_2', DOUBLE '2.0', BIGINT '2', BIGINT '2', BIGINT '1', BIGINT '2')," +
                         "  (VARCHAR 'string_3', DOUBLE '3.0', BIGINT '3', BIGINT '3', BIGINT '1', BIGINT '3')")
                 .isFullyPushedDown();
+    }
+
+    @Test
+    public void testNonLowerTable()
+    {
+        long rowCount = (long) computeScalar("SELECT COUNT(*) FROM " + MIXED_CASE_TABLE_NAME);
+        List<String> rows = new ArrayList<>();
+        for (int i = 0; i < rowCount; i++) {
+            rows.add(format("('string_%s', '%s', '%s')", i, i, initialUpdatedAt.plusMillis(i * 1000).getEpochSecond()));
+        }
+
+        String mixedCaseColumnNamesTableValues = rows.stream().collect(joining(",", "VALUES ", ""));
+
+        // Test segment query all rows
+        assertQuery("SELECT stringcol, longcol, updatedatseconds" +
+                        "  FROM " + MIXED_CASE_TABLE_NAME,
+                mixedCaseColumnNamesTableValues);
+
+        // Test broker query all rows
+        assertQuery("SELECT stringcol, longcol, updatedatseconds" +
+                        "  FROM  \"SELECT updatedatseconds, longcol, stringcol FROM " + MIXED_CASE_TABLE_NAME + "\"",
+                mixedCaseColumnNamesTableValues);
+
+        String singleRowValues = "VALUES (VARCHAR 'string_3', BIGINT '3', BIGINT '" + initialUpdatedAt.plusMillis(3 * 1000).getEpochSecond() + "')";
+
+        // Test segment query single row
+        assertThat(query("SELECT stringcol, longcol, updatedatseconds" +
+                "  FROM " + MIXED_CASE_TABLE_NAME +
+                "  WHERE longcol = 3"))
+                .matches(singleRowValues)
+                .isFullyPushedDown();
+
+        // Test broker query single row
+        assertThat(query("SELECT stringcol, longcol, updatedatseconds" +
+                "  FROM  \"SELECT updatedatseconds, longcol, stringcol FROM " + MIXED_CASE_TABLE_NAME +
+                "\" WHERE longcol = 3"))
+                .matches(singleRowValues)
+                .isFullyPushedDown();
+    }
+
+    @Test
+    public void testAmbiguousTables()
+    {
+        assertQueryFails("SELECT * FROM " + DUPLICATE_TABLE_LOWERCASE, "Ambiguous table names: (" + DUPLICATE_TABLE_LOWERCASE + ", " + DUPLICATE_TABLE_MIXED_CASE + "|" + DUPLICATE_TABLE_MIXED_CASE + ", " + DUPLICATE_TABLE_LOWERCASE + ")");
+        assertQueryFails("SELECT * FROM " + DUPLICATE_TABLE_MIXED_CASE, "Ambiguous table names: (" + DUPLICATE_TABLE_LOWERCASE + ", " + DUPLICATE_TABLE_MIXED_CASE + "|" + DUPLICATE_TABLE_MIXED_CASE + ", " + DUPLICATE_TABLE_LOWERCASE + ")");
     }
 
     @Test
