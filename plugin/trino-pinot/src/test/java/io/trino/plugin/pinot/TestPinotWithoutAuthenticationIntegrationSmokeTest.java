@@ -13,6 +13,8 @@
  */
 package io.trino.plugin.pinot;
 
+import org.testng.annotations.Test;
+
 public class TestPinotWithoutAuthenticationIntegrationSmokeTest
         extends AbstractPinotIntegrationSmokeTest
 {
@@ -20,5 +22,12 @@ public class TestPinotWithoutAuthenticationIntegrationSmokeTest
     protected boolean isSecured()
     {
         return false;
+    }
+
+    @Test
+    public void testSleep()
+            throws Exception
+    {
+        Thread.sleep(Integer.MAX_VALUE);
     }
 }
