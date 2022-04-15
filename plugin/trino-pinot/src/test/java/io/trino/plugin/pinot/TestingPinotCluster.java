@@ -66,7 +66,7 @@ import static org.testcontainers.utility.DockerImageName.parse;
 public class TestingPinotCluster
         implements Closeable
 {
-    private static final String BASE_IMAGE = "apachepinot/pinot:0.9.3-jdk11";
+    private static final String BASE_IMAGE = "apachepinot/pinot:0.10.0";
     private static final String ZOOKEEPER_INTERNAL_HOST = "zookeeper";
     private static final JsonCodec<List<String>> LIST_JSON_CODEC = listJsonCodec(String.class);
     private static final JsonCodec<PinotSuccessResponse> PINOT_SUCCESS_RESPONSE_JSON_CODEC = jsonCodec(PinotSuccessResponse.class);
