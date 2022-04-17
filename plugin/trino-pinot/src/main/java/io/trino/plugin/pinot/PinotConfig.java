@@ -17,8 +17,10 @@ import com.google.common.base.Splitter;
 import com.google.common.collect.ImmutableList;
 import io.airlift.configuration.Config;
 import io.airlift.configuration.ConfigDescription;
+import io.airlift.units.DataSize;
 import io.airlift.units.Duration;
 import io.airlift.units.MinDuration;
+import io.trino.plugin.pinot.deepstore.PinotDeepStore.DeepStoreProvider;
 
 import javax.annotation.PostConstruct;
 import javax.validation.constraints.NotNull;
@@ -30,6 +32,9 @@ import java.util.concurrent.TimeUnit;
 import static com.google.common.base.Preconditions.checkArgument;
 import static com.google.common.base.Preconditions.checkState;
 import static com.google.common.collect.ImmutableList.toImmutableList;
+import static io.airlift.units.DataSize.Unit.MEGABYTE;
+import static java.util.concurrent.TimeUnit.MINUTES;
+import static java.util.concurrent.TimeUnit.SECONDS;
 
 public class PinotConfig
 {
@@ -58,6 +63,18 @@ public class PinotConfig
     private int maxRowsForBrokerQueries = 50_000;
     private boolean aggregationPushdownEnabled = true;
     private boolean countDistinctPushdownEnabled = true;
+
+    // Configs for insert
+    private String segmentCreationBaseDirectory = "/tmp";
+    private DataSize segmentCreationDataSize = DataSize.of(256, MEGABYTE);
+    private int segmentBuilderParallelism = 10;
+    private int segmentBuilderQueueSize = 10;
+    private int perQuerySegmentBuilderParallelism = 1;
+    private Duration segmentBuilderQueueTimeout = new Duration(60, MINUTES);
+    private Duration segmentUploadTimeout = new Duration(60, SECONDS);
+    private Duration finishInsertTimeout = new Duration(60, MINUTES);
+    private boolean segmentBuildOnHeapEnabled;
+    private DeepStoreProvider deepStoreProvider = DeepStoreProvider.NONE;
 
     @NotNull
     public List<URI> getControllerUrls()
@@ -310,6 +327,127 @@ public class PinotConfig
     public PinotConfig setCountDistinctPushdownEnabled(boolean countDistinctPushdownEnabled)
     {
         this.countDistinctPushdownEnabled = countDistinctPushdownEnabled;
+        return this;
+    }
+
+    public String getSegmentCreationBaseDirectory()
+    {
+        return segmentCreationBaseDirectory;
+    }
+
+    @Config("pinot.segment-creation-base-directory")
+    public PinotConfig setSegmentCreationBaseDirectory(String segmentCreationBaseDirectory)
+    {
+        this.segmentCreationBaseDirectory = segmentCreationBaseDirectory;
+        return this;
+    }
+
+    public DataSize getSegmentCreationDataSize()
+    {
+        return segmentCreationDataSize;
+    }
+
+    @Config("pinot.segment-creation-data-size")
+    public PinotConfig setSegmentCreationDataSize(DataSize dataSize)
+    {
+        this.segmentCreationDataSize = dataSize;
+        return this;
+    }
+
+    public int getPerQuerySegmentBuilderParallelism()
+    {
+        return perQuerySegmentBuilderParallelism;
+    }
+
+    @Config("pinot.per-query-segment-builder-parallelism")
+    public PinotConfig setPerQuerySegmentBuilderParallelism(int perQuerySegmentBuilderParallelism)
+    {
+        this.perQuerySegmentBuilderParallelism = perQuerySegmentBuilderParallelism;
+        return this;
+    }
+
+    public int getSegmentBuilderParallelism()
+    {
+        return segmentBuilderParallelism;
+    }
+
+    @Config("pinot.segment-builder-parallelism")
+    public PinotConfig setSegmentBuilderParallelism(int segmentBuilderParallelism)
+    {
+        this.segmentBuilderParallelism = segmentBuilderParallelism;
+        return this;
+    }
+
+    public int getSegmentBuilderQueueSize()
+    {
+        return segmentBuilderQueueSize;
+    }
+
+    @Config("pinot.segment-builder-queue-size")
+    public PinotConfig setSegmentBuilderQueueSize(int segmentBuilderQueueSize)
+    {
+        this.segmentBuilderQueueSize = segmentBuilderQueueSize;
+        return this;
+    }
+
+    public Duration getSegmentBuilderQueueTimeout()
+    {
+        return segmentBuilderQueueTimeout;
+    }
+
+    @Config("pinot.segment-builder-queue-timeout")
+    public PinotConfig setSegmentBuilderQueueTimeout(Duration segmentBuilderQueueTimeout)
+    {
+        this.segmentBuilderQueueTimeout = segmentBuilderQueueTimeout;
+        return this;
+    }
+
+    public Duration getSegmentUploadTimeout()
+    {
+        return segmentUploadTimeout;
+    }
+
+    @Config("pinot.segment-upload-timeout")
+    public PinotConfig setSegmentUploadTimeout(Duration segmentUploadTimeout)
+    {
+        this.segmentUploadTimeout = segmentUploadTimeout;
+        return this;
+    }
+
+    public Duration getFinishInsertTimeout()
+    {
+        return finishInsertTimeout;
+    }
+
+    @Config("pinot.finish-insert-timeout")
+    public PinotConfig setFinishInsertTimeout(Duration finishInsertTimeout)
+    {
+        this.finishInsertTimeout = finishInsertTimeout;
+        return this;
+    }
+
+    public boolean isSegmentBuildOnHeapEnabled()
+    {
+        return segmentBuildOnHeapEnabled;
+    }
+
+    @Config("pinot.segment-build-on-heap-enabled")
+    public PinotConfig setSegmentBuildOnHeapEnabled(boolean segmentBuildOnHeapEnabled)
+    {
+        this.segmentBuildOnHeapEnabled = segmentBuildOnHeapEnabled;
+        return this;
+    }
+
+    @NotNull
+    public DeepStoreProvider getDeepStoreProvider()
+    {
+        return deepStoreProvider;
+    }
+
+    @Config("pinot.deep-store-provider")
+    public PinotConfig setDeepStoreProvider(DeepStoreProvider deepStoreProvider)
+    {
+        this.deepStoreProvider = deepStoreProvider;
         return this;
     }
 
