@@ -159,6 +159,12 @@
         </dependency>
 
         <dependency>
+            <groupId>org.apache.commons</groupId>
+            <artifactId>commons-lang3</artifactId>
+            <version>3.8</version>
+        </dependency>
+
+        <dependency>
             <groupId>org.apache.helix</groupId>
             <artifactId>helix-core</artifactId>
             <version>0.9.8</version>
@@ -180,6 +186,12 @@
                     <artifactId>slf4j-log4j12</artifactId>
                 </exclusion>
             </exclusions>
+        </dependency>
+
+        <dependency>
+            <groupId>org.apache.httpcomponents</groupId>
+            <artifactId>httpcore</artifactId>
+            <version>4.4.11</version>
         </dependency>
 
         <dependency>
@@ -457,17 +469,20 @@
         </dependency>
 
         <dependency>
-            <groupId>org.apache.commons</groupId>
-            <artifactId>commons-lang3</artifactId>
-            <version>3.8</version>
+            <groupId>org.apache.pinot</groupId>
+            <artifactId>pinot-s3</artifactId>
+            <version>${dep.pinot.version}</version>
             <scope>runtime</scope>
-        </dependency>
-
-        <dependency>
-            <groupId>org.apache.httpcomponents</groupId>
-            <artifactId>httpcore</artifactId>
-            <version>4.4.11</version>
-            <scope>runtime</scope>
+            <exclusions>
+                <exclusion>
+                    <groupId>io.netty</groupId>
+                    <artifactId>netty-transport-native-epoll</artifactId>
+                </exclusion>
+                <exclusion>
+                    <groupId>org.apache.httpcomponents</groupId>
+                    <artifactId>httpcore</artifactId>
+                </exclusion>
+            </exclusions>
         </dependency>
 
         <dependency>
@@ -609,6 +624,20 @@
                             </excludes>
                         </requireUpperBoundDeps>
                     </rules>
+                </configuration>
+            </plugin>
+            <plugin>
+                <groupId>org.basepom.maven</groupId>
+                <artifactId>duplicate-finder-maven-plugin</artifactId>
+                <configuration>
+                    <ignoredResourcePatterns>
+                        <!-- software.amazon.awssdk:s3:2.14.28 and software.amazon.awssdk:sts:2.14.28 codegen-resources type file duplicate-->
+                        <ignoredResourcePattern>codegen-resources/customization.config</ignoredResourcePattern>
+                        <ignoredResourcePattern>codegen-resources/paginators-1.json</ignoredResourcePattern>
+                        <ignoredResourcePattern>codegen-resources/service-2.json</ignoredResourcePattern>
+                        <!-- org.eclipse.jetty.http2:http2-client:9.4.44.v20210927, org.eclipse.jetty.http2:http2-common:9.4.44.v20210927, org.eclipse.jetty.http2:http2-hpack:9.4.44.v20210927, org.eclipse.jetty.http2:http2-http-client-transport:9.4.44.v20210927, org.eclipse.jetty:jetty-alpn-client:9.4.44.v20210927, org.eclipse.jetty:jetty-alpn-java-client:9.4.44.v20210927, org.eclipse.jetty:jetty-client:9.4.44.v20210927, org.eclipse.jetty:jetty-http:9.4.44.v20210927, org.eclipse.jetty:jetty-io:9.4.44.v20210927, org.eclipse.jetty:jetty-util:9.4.44.v20210927 duplicate about.html -->
+                        <ignoredResourcePattern>about.html</ignoredResourcePattern>
+                    </ignoredResourcePatterns>
                 </configuration>
             </plugin>
         </plugins>

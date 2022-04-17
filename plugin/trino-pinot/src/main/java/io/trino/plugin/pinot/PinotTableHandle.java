@@ -35,10 +35,11 @@ public class PinotTableHandle
     private final TupleDomain<ColumnHandle> constraint;
     private final OptionalLong limit;
     private final Optional<DynamicTable> query;
+    private final Optional<PinotDateTimeField> dateTimeField;
 
     public PinotTableHandle(String schemaName, String tableName)
     {
-        this(schemaName, tableName, TupleDomain.all(), OptionalLong.empty(), Optional.empty());
+        this(schemaName, tableName, TupleDomain.all(), OptionalLong.empty(), Optional.empty(), Optional.empty());
     }
 
     @JsonCreator
@@ -47,7 +48,8 @@ public class PinotTableHandle
             @JsonProperty("tableName") String tableName,
             @JsonProperty("constraint") TupleDomain<ColumnHandle> constraint,
             @JsonProperty("limit") OptionalLong limit,
-            @JsonProperty("query") Optional<DynamicTable> query)
+            @JsonProperty("query") Optional<DynamicTable> query,
+            @JsonProperty("dateTimeField") Optional<PinotDateTimeField> dateTimeField)
 
     {
         this.schemaName = requireNonNull(schemaName, "schemaName is null");
@@ -55,6 +57,7 @@ public class PinotTableHandle
         this.constraint = requireNonNull(constraint, "constraint is null");
         this.limit = requireNonNull(limit, "limit is null");
         this.query = requireNonNull(query, "query is null");
+        this.dateTimeField = requireNonNull(dateTimeField, "dateTimeField is null");
     }
 
     @JsonProperty
@@ -87,6 +90,12 @@ public class PinotTableHandle
         return query;
     }
 
+    @JsonProperty
+    public Optional<PinotDateTimeField> getDateTimeField()
+    {
+        return dateTimeField;
+    }
+
     @Override
     public boolean equals(Object o)
     {
@@ -116,6 +125,7 @@ public class PinotTableHandle
                 .add("constraint", constraint)
                 .add("limit", limit)
                 .add("query", query)
+                .add("dateTimeField", dateTimeField)
                 .toString();
     }
 }
