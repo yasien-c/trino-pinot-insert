@@ -26,7 +26,6 @@ public class PinotS3Config
     private URI s3Endpoint;
     private String s3Region;
 
-    @NotNull
     public String getS3AccessKeyFile()
     {
         return s3AccessKeyFile;
@@ -39,7 +38,6 @@ public class PinotS3Config
         return this;
     }
 
-    @NotNull
     public String getS3SecretKeyFile()
     {
         return s3SecretKeyFile;

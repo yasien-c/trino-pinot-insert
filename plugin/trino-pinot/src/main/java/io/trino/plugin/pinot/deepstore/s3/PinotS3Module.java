@@ -49,12 +49,16 @@ public class PinotS3Module
     public static PinotConfiguration getPinotFsConfiguration(PinotS3Config config)
     {
         try {
-            return new PinotConfiguration(ImmutableMap.<String, Object>builder()
+            ImmutableMap.Builder<String, Object> pinotConfigurationBuilder = ImmutableMap.builder();
+            if (config.getS3AccessKeyFile() != null && config.getS3SecretKeyFile() != null) {
+                pinotConfigurationBuilder
+                        .put("storage.factory.s3.accesskey", Files.readString(Paths.get(config.getS3AccessKeyFile()), UTF_8))
+                        .put("storage.factory.s3.secretkey", Files.readString(Paths.get(config.getS3SecretKeyFile()), UTF_8));
+            }
+            return new PinotConfiguration(pinotConfigurationBuilder
                     .put("storage.factory.class.s3", "org.apache.pinot.plugin.filesystem.S3PinotFS")
                     .put("storage.factory.s3.region", config.getS3Region())
                     .put("storage.factory.s3.endpoint", config.getS3Endpoint().toString())
-                    .put("storage.factory.s3.accesskey", Files.readString(Paths.get(config.getS3AccessKeyFile()), UTF_8))
-                    .put("storage.factory.s3.secretkey", Files.readString(Paths.get(config.getS3SecretKeyFile()), UTF_8))
                     .buildOrThrow());
         }
         catch (IOException e) {
