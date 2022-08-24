@@ -312,7 +312,7 @@ public class PinotAsyncDiskBasedMetadataPushPageSink
     private List<String> getSegmentsToReplace(String segmentDate)
     {
         return pinotClient.getSegments(pinotInsertTableHandle.getPinotTableName()).getOffline().stream()
-                .filter(segment -> segment.contains(segmentDate))
+                .filter(segment -> segmentDate.equals(DIMENSION_TABLE_SEGMENT_KEY) || segment.contains(segmentDate))
                 .collect(toImmutableList());
     }
 
@@ -652,7 +652,14 @@ public class PinotAsyncDiskBasedMetadataPushPageSink
                             null));
                 }
                 else {
-                    checkState(tableConfig.isDimTable(), "Null time column only allowed for dimension tables");
+                    segmentGeneratorConfig.setSegmentNameGenerator(new NormalizedDateSegmentNameGenerator(
+                            pinotInsertTableHandle.getPinotTableName(),
+                            format("%s-%s", pinotInsertTableHandle.getPinotTableName(), createdAtEpochMillis),
+                            false,
+                            "REFRESH",
+                            null,
+                            null,
+                            null));
                 }
                 segmentGeneratorConfig.setSequenceId(sequenceId);
                 SegmentCreationDataSource dataSource = new RecordReaderSegmentCreationDataSource(recordReader);
