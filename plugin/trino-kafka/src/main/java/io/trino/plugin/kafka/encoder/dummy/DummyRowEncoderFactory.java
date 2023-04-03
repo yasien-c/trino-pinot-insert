@@ -11,14 +11,24 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package io.trino.plugin.kafka.encoder;
+package io.trino.plugin.kafka.encoder.dummy;
 
+import io.trino.plugin.kafka.encoder.EncoderColumnHandle;
+import io.trino.plugin.kafka.encoder.RowEncoder;
+import io.trino.plugin.kafka.encoder.RowEncoderFactory;
 import io.trino.spi.connector.ConnectorSession;
 
 import java.util.List;
 import java.util.Optional;
 
-public interface RowEncoderFactory
+public class DummyRowEncoderFactory
+        implements RowEncoderFactory
 {
-    RowEncoder create(ConnectorSession session, Optional<String> dataSchema, List<EncoderColumnHandle> columnHandles, String topic, boolean isKey);
+    private static final RowEncoder ENCODER_INSTANCE = new DummyRowEncoder();
+
+    @Override
+    public RowEncoder create(ConnectorSession session, Optional<String> dataSchema, List<EncoderColumnHandle> columnHandles, String topic, boolean isKey)
+    {
+        return ENCODER_INSTANCE;
+    }
 }

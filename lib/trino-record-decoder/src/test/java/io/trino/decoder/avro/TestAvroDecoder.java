@@ -61,6 +61,7 @@ import static io.trino.decoder.avro.AvroDecoderTestUtil.checkArrayValues;
 import static io.trino.decoder.avro.AvroDecoderTestUtil.checkMapValues;
 import static io.trino.decoder.avro.AvroDecoderTestUtil.checkRowValues;
 import static io.trino.decoder.avro.AvroRowDecoderFactory.DATA_SCHEMA;
+import static io.trino.decoder.util.DecoderTestUtil.TESTING_SESSION;
 import static io.trino.decoder.util.DecoderTestUtil.checkIsNull;
 import static io.trino.decoder.util.DecoderTestUtil.checkValue;
 import static io.trino.spi.type.BigintType.BIGINT;
@@ -163,7 +164,7 @@ public class TestAvroDecoder
 
     private static Map<DecoderColumnHandle, FieldValueProvider> decodeRow(byte[] avroData, Set<DecoderColumnHandle> columns, Map<String, String> dataParams)
     {
-        RowDecoder rowDecoder = DECODER_FACTORY.create(dataParams, columns);
+        RowDecoder rowDecoder = DECODER_FACTORY.create(dataParams, columns, TESTING_SESSION);
         return rowDecoder.decodeRow(avroData)
                 .orElseThrow(AssertionError::new);
     }
@@ -1216,7 +1217,7 @@ public class TestAvroDecoder
                 .name("dummy").type().longType().noDefault()
                 .endRecord()
                 .toString();
-        DECODER_FACTORY.create(ImmutableMap.of(DATA_SCHEMA, someSchema), ImmutableSet.of(new DecoderTestColumnHandle(0, "some_column", columnType, "0", null, null, false, false, false)));
+        DECODER_FACTORY.create(ImmutableMap.of(DATA_SCHEMA, someSchema), ImmutableSet.of(new DecoderTestColumnHandle(0, "some_column", columnType, "0", null, null, false, false, false)), TESTING_SESSION);
     }
 
     private void singleColumnDecoder(Type columnType, String mapping, String dataFormat, String formatHint, boolean keyDecoder, boolean hidden, boolean internal)
@@ -1226,6 +1227,6 @@ public class TestAvroDecoder
                 .endRecord()
                 .toString();
 
-        DECODER_FACTORY.create(ImmutableMap.of(DATA_SCHEMA, someSchema), ImmutableSet.of(new DecoderTestColumnHandle(0, "some_column", columnType, mapping, dataFormat, formatHint, keyDecoder, hidden, internal)));
+        DECODER_FACTORY.create(ImmutableMap.of(DATA_SCHEMA, someSchema), ImmutableSet.of(new DecoderTestColumnHandle(0, "some_column", columnType, mapping, dataFormat, formatHint, keyDecoder, hidden, internal)), TESTING_SESSION);
     }
 }

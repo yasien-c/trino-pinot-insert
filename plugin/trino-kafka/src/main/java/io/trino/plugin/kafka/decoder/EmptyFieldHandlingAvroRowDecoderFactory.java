@@ -11,24 +11,41 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package io.trino.decoder.dummy;
+package io.trino.plugin.kafka.decoder;
 
 import io.trino.decoder.DecoderColumnHandle;
 import io.trino.decoder.RowDecoder;
 import io.trino.decoder.RowDecoderFactory;
+import io.trino.decoder.avro.AvroRowDecoderFactory;
 import io.trino.spi.connector.ConnectorSession;
+
+import javax.inject.Inject;
 
 import java.util.Map;
 import java.util.Set;
 
-public class DummyRowDecoderFactory
+import static io.trino.plugin.kafka.schema.confluent.AvroSchemaConverter.EmptyFieldStrategy.ADD_DUMMY;
+import static io.trino.plugin.kafka.schema.confluent.ConfluentSessionProperties.getEmptyFieldStrategy;
+import static java.util.Objects.requireNonNull;
+
+public class EmptyFieldHandlingAvroRowDecoderFactory
         implements RowDecoderFactory
 {
-    public static final RowDecoder DECODER_INSTANCE = new DummyRowDecoder();
+    private final AvroRowDecoderFactory delegate;
+
+    @Inject
+    public EmptyFieldHandlingAvroRowDecoderFactory(AvroRowDecoderFactory delegate)
+    {
+        this.delegate = requireNonNull(delegate, "delegate is null");
+    }
 
     @Override
     public RowDecoder create(Map<String, String> decoderParams, Set<DecoderColumnHandle> columns, ConnectorSession session)
     {
-        return DECODER_INSTANCE;
+        RowDecoder rowDecoder = delegate.create(decoderParams, columns, session);
+        if (getEmptyFieldStrategy(session) == ADD_DUMMY) {
+            return new EmptyFieldHandlingAvroRowDecoder(rowDecoder);
+        }
+        return rowDecoder;
     }
 }

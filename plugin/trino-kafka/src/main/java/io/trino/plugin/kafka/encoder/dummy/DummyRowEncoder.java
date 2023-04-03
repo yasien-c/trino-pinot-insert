@@ -11,14 +11,25 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package io.trino.plugin.kafka.encoder;
+package io.trino.plugin.kafka.encoder.dummy;
 
-import io.trino.spi.connector.ConnectorSession;
+import io.trino.plugin.kafka.encoder.RowEncoder;
+import io.trino.spi.block.Block;
 
-import java.util.List;
-import java.util.Optional;
-
-public interface RowEncoderFactory
+public class DummyRowEncoder
+        implements RowEncoder
 {
-    RowEncoder create(ConnectorSession session, Optional<String> dataSchema, List<EncoderColumnHandle> columnHandles, String topic, boolean isKey);
+    public static final String NAME = "dummy";
+
+    @Override
+    public void appendColumnValue(Block block, int position) {}
+
+    @Override
+    public byte[] toByteArray()
+    {
+        return null;
+    }
+
+    @Override
+    public void close() {}
 }
