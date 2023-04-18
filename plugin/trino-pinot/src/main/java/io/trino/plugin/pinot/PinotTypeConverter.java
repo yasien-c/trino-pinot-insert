@@ -115,6 +115,8 @@ public class PinotTypeConverter
                 return jsonTypeSupplier.get();
             case BYTES:
                 return VarbinaryType.VARBINARY;
+            case TIMESTAMP:
+                return TimestampType.TIMESTAMP_MILLIS;
             case INT_ARRAY:
                 return new ArrayType(IntegerType.INTEGER);
             case LONG_ARRAY:
