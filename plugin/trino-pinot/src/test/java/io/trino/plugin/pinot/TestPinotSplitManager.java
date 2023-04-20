@@ -19,7 +19,6 @@ import io.trino.spi.connector.ConnectorSession;
 import io.trino.spi.connector.ConnectorSplitSource;
 import io.trino.spi.connector.Constraint;
 import io.trino.spi.connector.DynamicFilter;
-import io.trino.spi.connector.SchemaTableName;
 import io.trino.testing.TestingConnectorSession;
 import org.testng.annotations.Test;
 
@@ -48,8 +47,8 @@ public class TestPinotSplitManager
     @Test
     public void testSplitsBroker()
     {
-        SchemaTableName schemaTableName = new SchemaTableName("default", format("SELECT %s, %s FROM %s LIMIT %d", "AirlineID", "OriginStateName", "airlineStats", 100));
-        DynamicTable dynamicTable = buildFromPql(pinotMetadata, schemaTableName, mockClusterInfoFetcher, TESTING_TYPE_CONVERTER);
+        String query = format("SELECT %s, %s FROM %s LIMIT %d", "AirlineID", "OriginStateName", "airlineStats", 100);
+        DynamicTable dynamicTable = buildFromPql(pinotMetadata, query, mockClusterInfoFetcher, TESTING_TYPE_CONVERTER);
 
         PinotTableHandle pinotTableHandle = testingPinotTableHandle("default", dynamicTable.getTableName(), Optional.of(dynamicTable));
         List<PinotSplit> splits = getSplitsHelper(pinotTableHandle, 1, false);
