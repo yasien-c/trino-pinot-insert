@@ -3018,4 +3018,11 @@ public abstract class BasePinotConnectorSmokeTest
                 "  WHERE string_col like 'string_col%' and int_col between 4 and 7"))
                 .matches(getValuesClause(getExpectedValuesForInsert(replacementValues)));
     }
+
+    @Test
+    public void testTableFunctions()
+    {
+        assertQuerySucceeds("SELECT * FROM TABLE(system.query('select * from my_table where city = ''Los Angeles'''))");
+        assertQuerySucceeds("SELECT * FROM TABLE(system.query('select * from mixedCase'))");
+    }
 }

@@ -41,8 +41,10 @@ import io.trino.plugin.pinot.deepstore.DeepStore;
 import io.trino.plugin.pinot.deepstore.PinotDeepStore;
 import io.trino.plugin.pinot.deepstore.gcs.PinotGcsModule;
 import io.trino.plugin.pinot.deepstore.s3.PinotS3Module;
+import io.trino.plugin.pinot.query.ptf.PinotQueryFunctionProvider;
 import io.trino.spi.NodeManager;
 import io.trino.spi.connector.ConnectorNodePartitioningProvider;
+import io.trino.spi.ptf.ConnectorTableFunction;
 import org.apache.pinot.common.utils.DataSchema;
 
 import javax.management.MBeanServer;
@@ -52,6 +54,7 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ThreadPoolExecutor;
 
+import static com.google.inject.multibindings.Multibinder.newSetBinder;
 import static com.google.inject.multibindings.OptionalBinder.newOptionalBinder;
 import static io.airlift.concurrent.Threads.daemonThreadsNamed;
 import static io.airlift.concurrent.Threads.threadsNamed;
@@ -118,6 +121,7 @@ public class PinotModule
         bindDeepStore(PinotDeepStore.DeepStoreProvider.NONE, new EmptyModule());
         bindDeepStore(PinotDeepStore.DeepStoreProvider.GCS, new PinotGcsModule());
         bindDeepStore(PinotDeepStore.DeepStoreProvider.S3, new PinotS3Module());
+        newSetBinder(binder, ConnectorTableFunction.class).addBinding().toProvider(PinotQueryFunctionProvider.class).in(Scopes.SINGLETON);
 
         install(conditionalModule(
                 PinotConfig.class,
