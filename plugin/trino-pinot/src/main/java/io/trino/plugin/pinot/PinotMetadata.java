@@ -37,6 +37,7 @@ import io.trino.plugin.pinot.query.aggregation.ImplementCountAll;
 import io.trino.plugin.pinot.query.aggregation.ImplementCountDistinct;
 import io.trino.plugin.pinot.query.aggregation.ImplementMinMax;
 import io.trino.plugin.pinot.query.aggregation.ImplementSum;
+import io.trino.plugin.pinot.query.ptf.PinotQueryFunctionProvider.QueryFunctionHandle;
 import io.trino.spi.Node;
 import io.trino.spi.NodeManager;
 import io.trino.spi.connector.AggregateFunction;
@@ -59,11 +60,13 @@ import io.trino.spi.connector.LimitApplicationResult;
 import io.trino.spi.connector.RetryMode;
 import io.trino.spi.connector.SchemaTableName;
 import io.trino.spi.connector.SchemaTablePrefix;
+import io.trino.spi.connector.TableFunctionApplicationResult;
 import io.trino.spi.expression.ConnectorExpression;
 import io.trino.spi.expression.Variable;
 import io.trino.spi.predicate.Domain;
 import io.trino.spi.predicate.TupleDomain;
 import io.trino.spi.predicate.ValueSet;
+import io.trino.spi.ptf.ConnectorTableFunctionHandle;
 import io.trino.spi.statistics.ComputedStatistics;
 import io.trino.spi.type.ArrayType;
 import io.trino.spi.type.Type;
@@ -608,6 +611,20 @@ public class PinotMetadata
                     Optional.of(newPushedDownAggregateExpression.getArgument()));
         }
         return aggregateColumn;
+    }
+
+    @Override
+    public Optional<TableFunctionApplicationResult<ConnectorTableHandle>> applyTableFunction(ConnectorSession session, ConnectorTableFunctionHandle handle)
+    {
+        if (!(handle instanceof QueryFunctionHandle)) {
+            return Optional.empty();
+        }
+
+        PinotTableHandle tableHandle = (PinotTableHandle) ((QueryFunctionHandle) handle).getTableHandle();
+        checkState(tableHandle.getQuery().isPresent(), "dynamic table is not present");
+        return Optional.of(new TableFunctionApplicationResult<>(tableHandle, tableHandle.getQuery().get().getColumnHandlesForSelect()
+                .map(ColumnHandle.class::cast)
+                .collect(toImmutableList())));
     }
 
     @VisibleForTesting

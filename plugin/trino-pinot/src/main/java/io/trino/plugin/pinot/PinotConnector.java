@@ -14,6 +14,7 @@
 package io.trino.plugin.pinot;
 
 import com.google.common.collect.ImmutableList;
+import com.google.common.collect.ImmutableSet;
 import io.airlift.bootstrap.LifeCycleManager;
 import io.trino.spi.connector.Connector;
 import io.trino.spi.connector.ConnectorMetadata;
@@ -23,12 +24,14 @@ import io.trino.spi.connector.ConnectorPageSourceProvider;
 import io.trino.spi.connector.ConnectorSession;
 import io.trino.spi.connector.ConnectorSplitManager;
 import io.trino.spi.connector.ConnectorTransactionHandle;
+import io.trino.spi.ptf.ConnectorTableFunction;
 import io.trino.spi.session.PropertyMetadata;
 import io.trino.spi.transaction.IsolationLevel;
 
 import javax.inject.Inject;
 
 import java.util.List;
+import java.util.Set;
 
 import static java.util.Objects.requireNonNull;
 
@@ -42,6 +45,7 @@ public class PinotConnector
     private final PinotPageSinkProvider pageSinkProvider;
     private final ConnectorNodePartitioningProvider partitioningProvider;
     private final PinotSessionProperties sessionProperties;
+    private final Set<ConnectorTableFunction> connectorTableFunctions;
 
     @Inject
     public PinotConnector(
@@ -51,7 +55,8 @@ public class PinotConnector
             PinotPageSourceProvider pageSourceProvider,
             PinotPageSinkProvider pageSinkProvider,
             ConnectorNodePartitioningProvider partitioningProvider,
-            PinotSessionProperties pinotSessionProperties)
+            PinotSessionProperties pinotSessionProperties,
+            Set<ConnectorTableFunction> connectorTableFunctions)
     {
         this.lifeCycleManager = requireNonNull(lifeCycleManager, "lifeCycleManager is null");
         this.metadata = requireNonNull(metadata, "metadata is null");
@@ -60,6 +65,7 @@ public class PinotConnector
         this.pageSinkProvider = requireNonNull(pageSinkProvider, "pageSinkProvider is null");
         this.partitioningProvider = requireNonNull(partitioningProvider, "partitioningProvider is null");
         this.sessionProperties = requireNonNull(pinotSessionProperties, "pinotSessionProperties is null");
+        this.connectorTableFunctions = ImmutableSet.copyOf(requireNonNull(connectorTableFunctions, "connectorTableFunctions is null"));
     }
 
     @Override
@@ -102,6 +108,12 @@ public class PinotConnector
     public List<PropertyMetadata<?>> getSessionProperties()
     {
         return ImmutableList.copyOf(sessionProperties.getSessionProperties());
+    }
+
+    @Override
+    public Set<ConnectorTableFunction> getTableFunctions()
+    {
+        return connectorTableFunctions;
     }
 
     @Override
