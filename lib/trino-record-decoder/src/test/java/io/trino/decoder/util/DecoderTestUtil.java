@@ -21,6 +21,8 @@ import io.trino.testing.TestingConnectorSession;
 
 import java.util.Map;
 
+import static java.lang.Float.intBitsToFloat;
+import static java.lang.Math.toIntExact;
 import static org.testng.Assert.assertEquals;
 import static org.testng.Assert.assertNotNull;
 import static org.testng.Assert.assertTrue;
