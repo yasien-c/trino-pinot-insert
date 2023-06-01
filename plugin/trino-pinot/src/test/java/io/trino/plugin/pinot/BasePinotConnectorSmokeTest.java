@@ -49,6 +49,7 @@ import org.apache.pinot.segment.local.recordtransformer.RecordTransformer;
 import org.apache.pinot.segment.local.segment.creator.RecordReaderSegmentCreationDataSource;
 import org.apache.pinot.segment.local.segment.creator.impl.SegmentIndexCreationDriverImpl;
 import org.apache.pinot.segment.local.segment.readers.GenericRowRecordReader;
+import org.apache.pinot.plugin.inputformat.json.JSONRecordReader;
 import org.apache.pinot.segment.spi.creator.SegmentCreationDataSource;
 import org.apache.pinot.segment.spi.creator.SegmentGeneratorConfig;
 import org.apache.pinot.segment.spi.creator.name.NormalizedDateSegmentNameGenerator;
@@ -167,7 +168,7 @@ public abstract class BasePinotConnectorSmokeTest
         TestingPinotCluster pinot = closeAfterClass(new TestingPinotCluster(kafka.getNetwork(), isSecured(), isDeepStoreEnabled(), BUCKET, getPinotImageName()));
         pinot.start();
 
-        createAndPopulateAllTypesTopic(kafka, pinot);
+        /*createAndPopulateAllTypesTopic(kafka, pinot);
         createAndPopulateMixedCaseTableAndTopic(kafka, pinot);
         createAndPopulateMixedCaseDistinctTableAndTopic(kafka, pinot);
         createAndPopulateTooManyRowsTable(kafka, pinot);
@@ -181,7 +182,8 @@ public abstract class BasePinotConnectorSmokeTest
         createAndPopulateHavingQuotesInColumnNames(kafka, pinot);
         createAndPopulateHavingMultipleColumnsWithDuplicateValues(kafka, pinot);
         createOfflineInsert(pinot);
-
+         */
+        createAndPopulateQueryHistory(pinot);
         DistributedQueryRunner queryRunner = createPinotQueryRunner(
                 ImmutableMap.of(),
                 pinotProperties(pinot),
@@ -192,7 +194,7 @@ public abstract class BasePinotConnectorSmokeTest
         queryRunner.createCatalog("tpch", "tpch");
 
         // We need the query runner to populate nation and region data from tpch schema
-        createAndPopulateNationAndRegionData(kafka, pinot, queryRunner);
+        //createAndPopulateNationAndRegionData(kafka, pinot, queryRunner);
 
         return queryRunner;
     }
@@ -713,6 +715,73 @@ public abstract class BasePinotConnectorSmokeTest
     }
 
     private static Path createSegment(InputStream tableConfigInputStream, InputStream pinotSchemaInputStream, RecordReader recordReader, String outputDirectory, int sequenceId)
+    {
+        try {
+            org.apache.pinot.spi.data.Schema pinotSchema = org.apache.pinot.spi.data.Schema.fromInputStream(pinotSchemaInputStream);
+            TableConfig tableConfig = inputStreamToObject(tableConfigInputStream, TableConfig.class);
+            String tableName = TableNameBuilder.extractRawTableName(tableConfig.getTableName());
+            String timeColumnName = tableConfig.getValidationConfig().getTimeColumnName();
+            String segmentTempLocation = String.join(File.separator, outputDirectory, tableName, "segments");
+            Files.createDirectories(Paths.get(outputDirectory));
+            SegmentGeneratorConfig segmentGeneratorConfig = new SegmentGeneratorConfig(tableConfig, pinotSchema);
+            segmentGeneratorConfig.setTableName(tableName);
+            segmentGeneratorConfig.setOutDir(segmentTempLocation);
+            if (timeColumnName != null) {
+                DateTimeFormatSpec formatSpec = new DateTimeFormatSpec(pinotSchema.getDateTimeSpec(timeColumnName).getFormat());
+                segmentGeneratorConfig.setSegmentNameGenerator(new NormalizedDateSegmentNameGenerator(
+                        tableName,
+                        null,
+                        false,
+                        tableConfig.getValidationConfig().getSegmentPushType(),
+                        tableConfig.getValidationConfig().getSegmentPushFrequency(),
+                        formatSpec,
+                        null));
+            }
+            else {
+                checkState(tableConfig.isDimTable(), "Null time column only allowed for dimension tables");
+            }
+            segmentGeneratorConfig.setSequenceId(sequenceId);
+            SegmentCreationDataSource dataSource = new RecordReaderSegmentCreationDataSource(recordReader);
+            RecordTransformer recordTransformer = genericRow -> {
+                GenericRow record = null;
+                try {
+                    record = CompositeTransformer.getDefaultTransformer(tableConfig, pinotSchema).transform(genericRow);
+                }
+                catch (Exception e) {
+                    // ignored
+                    record = null;
+                }
+                return record;
+            };
+            SegmentIndexCreationDriverImpl driver = new SegmentIndexCreationDriverImpl();
+            driver.init(segmentGeneratorConfig, dataSource, recordTransformer, null);
+            driver.build();
+            File segmentOutputDirectory = driver.getOutputDirectory();
+            File tgzPath = new File(String.join(File.separator, outputDirectory, segmentOutputDirectory.getName() + ".tar.gz"));
+            TarGzCompressionUtils.createTarGzFile(segmentOutputDirectory, tgzPath);
+            return Paths.get(tgzPath.getAbsolutePath());
+        }
+        catch (Exception e) {
+            throw new RuntimeException(e);
+        }
+    }
+
+    private void createAndPopulateQueryHistory(TestingPinotCluster pinot)
+            throws Exception
+    {
+        pinot.createSchema(getClass().getClassLoader().getResourceAsStream("query_history_schema.json"), "query_history");
+        pinot.addOfflineTable(getClass().getClassLoader().getResourceAsStream("query_history_offlineSpec.json"), "query_history");
+        JSONRecordReader jsonRecordReader = new JSONRecordReader();
+        int sequenceId = 1;
+
+        for (File file : new File("%s/Downloads/hackathon/input".formatted(System.getProperty("user.home"))).listFiles()) {
+            jsonRecordReader.init(file, null, null);
+            Path segmentPath = createSegmentFromJson(getClass().getClassLoader().getResourceAsStream("query_history_offlineSpec.json"), getClass().getClassLoader().getResourceAsStream("query_history_schema.json"), jsonRecordReader, Paths.get("/Users/elon.azoulay/Downloads/hackathon/output/").toString(), sequenceId++);
+            pinot.publishOfflineSegment("query_history", segmentPath);
+        }
+    }
+
+    private static Path createSegmentFromJson(InputStream tableConfigInputStream, InputStream pinotSchemaInputStream, RecordReader recordReader, String outputDirectory, int sequenceId)
     {
         try {
             org.apache.pinot.spi.data.Schema pinotSchema = org.apache.pinot.spi.data.Schema.fromInputStream(pinotSchemaInputStream);
@@ -3024,5 +3093,12 @@ public abstract class BasePinotConnectorSmokeTest
     {
         assertQuerySucceeds("SELECT * FROM TABLE(system.query('select * from my_table where city = ''Los Angeles'''))");
         assertQuerySucceeds("SELECT * FROM TABLE(system.query('select * from mixedCase'))");
+    }
+
+    @Test
+    public void testSleep()
+            throws Exception
+    {
+        Thread.sleep(Integer.MAX_VALUE);
     }
 }

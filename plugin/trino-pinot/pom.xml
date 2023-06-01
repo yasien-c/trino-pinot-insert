@@ -432,6 +432,13 @@
 
         <dependency>
             <groupId>org.apache.pinot</groupId>
+            <artifactId>pinot-json</artifactId>
+            <version>${dep.pinot.version}</version>
+            <scope>test</scope>
+        </dependency>
+
+        <dependency>
+            <groupId>org.apache.pinot</groupId>
             <artifactId>pinot-segment-local</artifactId>
             <version>${dep.pinot.version}</version>
             <exclusions>

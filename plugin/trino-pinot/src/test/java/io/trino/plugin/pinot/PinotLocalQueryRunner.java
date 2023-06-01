@@ -73,11 +73,11 @@ public class PinotLocalQueryRunner
     public static void main(String[] args)
             throws Exception
     {
-        int minioPort = 58478;
-        int brokerPort = 58496;
-        String controllerUrl = "localhost:58490";
-        Map<String, Integer> serverPortMap = Map.of("b6dca12575ea", 58506, "71657fd54bbd", 58516, "f41a0dd8f851", 58511, "fe1b962e3b6c", 58500);
-        Map<String, Integer> grpcPortMap = Map.of("b6dca12575ea", 58504, "71657fd54bbd", 58517, "f41a0dd8f851", 58512, "fe1b962e3b6c", 58498);
+        int minioPort = 58839;
+        int brokerPort = 58850;
+        String controllerUrl = "localhost:58848";
+        Map<String, Integer> serverPortMap = Map.of("e61c6580f510", 58873, "e44293d394a4", 58853, "f13abbdcde01", 58867, "c33ae4c8cf3d", 58858);
+        Map<String, Integer> grpcPortMap = Map.of("e61c6580f510", 58871, "e44293d394a4", 58854, "f13abbdcde01", 58865, "c33ae4c8cf3d", 58859);
         Map<String, String> properties = ImmutableMap.of("http-server.http.port", "8080");
         Map<String, String> pinotProperties = ImmutableMap.<String, String>builder()
                 .put("pinot.controller-urls", controllerUrl)
