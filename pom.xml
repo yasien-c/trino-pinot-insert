@@ -42,6 +42,7 @@
         <module>lib/trino-cache</module>
         <module>lib/trino-filesystem</module>
         <module>lib/trino-filesystem-azure</module>
+        <module>lib/trino-filesystem-gcs</module>
         <module>lib/trino-filesystem-manager</module>
         <module>lib/trino-filesystem-s3</module>
         <module>lib/trino-geospatial-toolkit</module>
