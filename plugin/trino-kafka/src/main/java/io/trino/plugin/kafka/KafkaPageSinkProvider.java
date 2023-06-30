@@ -79,13 +79,17 @@ public class KafkaPageSinkProvider
                 session,
                 handle.getKeyDataFormat(),
                 getDataSchema(handle.getKeyDataSchemaLocation()),
-                keyColumns.build());
+                keyColumns.build(),
+                handle.getTopicName(),
+                true);
 
         RowEncoder messageEncoder = encoderFactory.create(
                 session,
                 handle.getMessageDataFormat(),
                 getDataSchema(handle.getMessageDataSchemaLocation()),
-                messageColumns.build());
+                messageColumns.build(),
+                handle.getTopicName(),
+                false);
 
         return new KafkaPageSink(
                 handle.getTopicName(),
