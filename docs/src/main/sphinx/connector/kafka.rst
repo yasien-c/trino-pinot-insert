@@ -475,7 +475,7 @@ schema registry. You must also configure the additional properties in the follow
         * ``IGNORE`` - Ignore structs with no fields. This propagates to parents.
           For example, an array of structs with no fields is ignored.
         * ``FAIL`` - Fail the query if a struct with no fields is defined.
-        * ``DUMMY`` - Add a dummy boolean field called ``dummy``, which is null.
+        * ``DUMMY`` - Add a dummy boolean field called ``$dummy``, which is null.
           This may be desired if the struct represents a marker field.
     - ``IGNORE``
   * - ``kafka.confluent-subjects-cache-refresh-interval``
