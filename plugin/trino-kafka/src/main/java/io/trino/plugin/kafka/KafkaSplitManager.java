@@ -16,6 +16,7 @@ package io.trino.plugin.kafka;
 import com.google.common.collect.ImmutableList;
 import com.google.inject.Inject;
 import io.trino.plugin.kafka.schema.ContentSchemaProvider;
+import io.trino.plugin.kafka.schema.ForKafkaRead;
 import io.trino.spi.HostAddress;
 import io.trino.spi.TrinoException;
 import io.trino.spi.connector.ConnectorSession;
@@ -48,7 +49,7 @@ public class KafkaSplitManager
     private final int messagesPerSplit;
 
     @Inject
-    public KafkaSplitManager(KafkaConsumerFactory consumerFactory, KafkaConfig kafkaConfig, KafkaFilterManager kafkaFilterManager, ContentSchemaProvider contentSchemaProvider)
+    public KafkaSplitManager(KafkaConsumerFactory consumerFactory, KafkaConfig kafkaConfig, KafkaFilterManager kafkaFilterManager, @ForKafkaRead ContentSchemaProvider contentSchemaProvider)
     {
         this.consumerFactory = requireNonNull(consumerFactory, "consumerFactory is null");
         this.messagesPerSplit = kafkaConfig.getMessagesPerSplit();

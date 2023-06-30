@@ -23,9 +23,12 @@ import io.airlift.log.Logging;
 import io.trino.decoder.DecoderModule;
 import io.trino.plugin.kafka.encoder.EncoderModule;
 import io.trino.plugin.kafka.schema.ContentSchemaProvider;
+import io.trino.plugin.kafka.schema.ForKafkaRead;
+import io.trino.plugin.kafka.schema.ForKafkaWrite;
 import io.trino.plugin.kafka.schema.MapBasedTableDescriptionSupplier;
 import io.trino.plugin.kafka.schema.TableDescriptionSupplier;
 import io.trino.plugin.kafka.schema.file.FileReadContentSchemaProvider;
+import io.trino.plugin.kafka.schema.file.FileWriteSchemaProvider;
 import io.trino.plugin.kafka.util.CodecSupplier;
 import io.trino.plugin.tpch.TpchPlugin;
 import io.trino.spi.connector.SchemaTableName;
@@ -132,7 +135,8 @@ public final class KafkaQueryRunner
                             kafkaConfig -> kafkaConfig.getTableDescriptionSupplier().equalsIgnoreCase(TEST),
                             binder -> binder.bind(TableDescriptionSupplier.class)
                                     .toInstance(new MapBasedTableDescriptionSupplier(topicDescriptions))),
-                    binder -> binder.bind(ContentSchemaProvider.class).to(FileReadContentSchemaProvider.class).in(Scopes.SINGLETON),
+                    binder -> binder.bind(ContentSchemaProvider.class).annotatedWith(ForKafkaRead.class).to(FileReadContentSchemaProvider.class).in(Scopes.SINGLETON),
+                    binder -> binder.bind(ContentSchemaProvider.class).annotatedWith(ForKafkaWrite.class).to(FileWriteSchemaProvider.class).in(Scopes.SINGLETON),
                     new DecoderModule(),
                     new EncoderModule()));
             Map<String, String> properties = new HashMap<>(extraKafkaProperties);

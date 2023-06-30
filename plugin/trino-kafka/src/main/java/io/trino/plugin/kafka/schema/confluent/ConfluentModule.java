@@ -46,13 +46,20 @@ import io.trino.decoder.protobuf.DynamicMessageProvider;
 import io.trino.decoder.protobuf.ProtobufRowDecoder;
 import io.trino.decoder.protobuf.ProtobufRowDecoderFactory;
 import io.trino.plugin.base.session.SessionPropertiesProvider;
+import io.trino.plugin.kafka.decoder.EmptyFieldHandlingAvroRowDecoder;
+import io.trino.plugin.kafka.decoder.EmptyFieldHandlingAvroRowDecoderFactory;
 import io.trino.plugin.kafka.decoder.KafkaRowDecoderFactory;
 import io.trino.plugin.kafka.encoder.DispatchingRowEncoderFactory;
 import io.trino.plugin.kafka.encoder.RowEncoderFactory;
 import io.trino.plugin.kafka.encoder.avro.AvroRowEncoder;
+import io.trino.plugin.kafka.encoder.dummy.DummyRowEncoder;
+import io.trino.plugin.kafka.encoder.dummy.DummyRowEncoderFactory;
+import io.trino.plugin.kafka.encoder.kafka.KafkaSerializerRowEncoder;
 import io.trino.plugin.kafka.encoder.protobuf.ProtobufRowEncoder;
 import io.trino.plugin.kafka.encoder.protobuf.ProtobufSchemaParser;
 import io.trino.plugin.kafka.schema.ContentSchemaProvider;
+import io.trino.plugin.kafka.schema.ForKafkaRead;
+import io.trino.plugin.kafka.schema.ForKafkaWrite;
 import io.trino.plugin.kafka.schema.ProtobufAnySupportConfig;
 import io.trino.plugin.kafka.schema.TableDescriptionSupplier;
 import io.trino.spi.HostAddress;
@@ -96,7 +103,7 @@ public class ConfluentModule
         configBinder(binder).bindConfig(ConfluentSchemaRegistryConfig.class);
         install(new ConfluentDecoderModule());
         install(new ConfluentEncoderModule());
-        binder.bind(ContentSchemaProvider.class).to(AvroConfluentContentSchemaProvider.class).in(Scopes.SINGLETON);
+        binder.bind(ContentSchemaProvider.class).annotatedWith(ForKafkaRead.class).to(AvroConfluentContentSchemaProvider.class).in(Scopes.SINGLETON);
         newSetBinder(binder, SchemaRegistryClientPropertiesProvider.class);
         newSetBinder(binder, SchemaProvider.class).addBinding().to(AvroSchemaProvider.class).in(Scopes.SINGLETON);
         // Each SchemaRegistry object should have a new instance of SchemaProvider
@@ -145,7 +152,8 @@ public class ConfluentModule
         {
             binder.bind(AvroReaderSupplier.Factory.class).to(ConfluentAvroReaderSupplier.Factory.class).in(Scopes.SINGLETON);
             binder.bind(AvroDeserializer.Factory.class).to(AvroBytesDeserializer.Factory.class).in(Scopes.SINGLETON);
-            newMapBinder(binder, String.class, RowDecoderFactory.class).addBinding(AvroRowDecoderFactory.NAME).to(AvroRowDecoderFactory.class).in(Scopes.SINGLETON);
+            binder.bind(AvroRowDecoderFactory.class).in(Scopes.SINGLETON);
+            newMapBinder(binder, String.class, RowDecoderFactory.class).addBinding(EmptyFieldHandlingAvroRowDecoder.NAME).to(EmptyFieldHandlingAvroRowDecoderFactory.class).in(Scopes.SINGLETON);
             newMapBinder(binder, String.class, RowDecoderFactory.class).addBinding(ProtobufRowDecoder.NAME).to(ProtobufRowDecoderFactory.class).in(Scopes.SINGLETON);
             newMapBinder(binder, String.class, RowDecoderFactory.class).addBinding(DummyRowDecoder.NAME).to(DummyRowDecoderFactory.class).in(SINGLETON);
             newMapBinder(binder, String.class, RowDecoderFactory.class).addBinding(KafkaRowDecoderFactory.NAME).to(KafkaRowDecoderFactory.class).in(SINGLETON);
@@ -166,13 +174,14 @@ public class ConfluentModule
         public void configure(Binder binder)
         {
             MapBinder<String, RowEncoderFactory> encoderFactoriesByName = encoderFactory(binder);
-            encoderFactoriesByName.addBinding(AvroRowEncoder.NAME).toInstance((session, dataSchema, columnHandles, topic, isKey) -> {
-                throw new TrinoException(NOT_SUPPORTED, "Insert not supported");
-            });
+            encoderFactoriesByName.addBinding(AvroRowEncoder.NAME).to(ConfluentRowEncoderFactory.class).in(SINGLETON);
+            encoderFactoriesByName.addBinding(KafkaSerializerRowEncoder.NAME).to(KafkaSerializerRowEncoder.Factory.class).in(SINGLETON);
             encoderFactoriesByName.addBinding(ProtobufRowEncoder.NAME).toInstance((session, dataSchema, columnHandles, topic, isKey) -> {
                 throw new TrinoException(NOT_SUPPORTED, "Insert is not supported for schema registry based tables");
             });
+            encoderFactoriesByName.addBinding(DummyRowEncoder.NAME).to(DummyRowEncoderFactory.class).in(SINGLETON);
             binder.bind(DispatchingRowEncoderFactory.class).in(SINGLETON);
+            binder.bind(ContentSchemaProvider.class).annotatedWith(ForKafkaWrite.class).to(AvroConfluentContentSchemaProvider.class).in(SINGLETON);
         }
     }
 
