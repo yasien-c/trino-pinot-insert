@@ -34,7 +34,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.testng.Assert.assertEquals;
 
-public class TestAvroConfluentContentSchemaReader
+public class TestAvroConfluentContentSchemaProvider
 {
     private static final String TOPIC = "test";
     private static final String SUBJECT_NAME = format("%s-value", TOPIC);
@@ -46,7 +46,7 @@ public class TestAvroConfluentContentSchemaReader
         MockSchemaRegistryClient mockSchemaRegistryClient = new MockSchemaRegistryClient();
         Schema schema = getAvroSchema();
         mockSchemaRegistryClient.register(SUBJECT_NAME, schema);
-        AvroConfluentContentSchemaReader avroConfluentSchemaReader = new AvroConfluentContentSchemaReader(mockSchemaRegistryClient);
+        AvroConfluentContentSchemaProvider avroConfluentSchemaReader = new AvroConfluentContentSchemaProvider(mockSchemaRegistryClient);
         KafkaTableHandle tableHandle = new KafkaTableHandle("default", TOPIC, TOPIC, AvroRowDecoderFactory.NAME, AvroRowDecoderFactory.NAME, Optional.empty(), Optional.empty(), Optional.empty(), Optional.of(SUBJECT_NAME), Optional.empty(), ImmutableList.of(), TupleDomain.all());
         assertEquals(avroConfluentSchemaReader.readValueContentSchema(tableHandle), Optional.of(schema).map(Schema::toString));
         assertEquals(avroConfluentSchemaReader.readKeyContentSchema(tableHandle), Optional.empty());
@@ -66,7 +66,7 @@ public class TestAvroConfluentContentSchemaReader
                 .orElseThrow();
         mockSchemaRegistryClient.register(SUBJECT_NAME, schemaWithReference);
 
-        AvroConfluentContentSchemaReader avroConfluentSchemaReader = new AvroConfluentContentSchemaReader(mockSchemaRegistryClient);
+        AvroConfluentContentSchemaProvider avroConfluentSchemaReader = new AvroConfluentContentSchemaProvider(mockSchemaRegistryClient);
         assertThat(avroConfluentSchemaReader.readSchema(Optional.empty(), Optional.of(SUBJECT_NAME)).map(schema -> new Parser().parse(schema))).isPresent();
     }
 
