@@ -30,6 +30,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 
+import static io.trino.decoder.util.DecoderTestUtil.TESTING_SESSION;
 import static io.trino.decoder.util.DecoderTestUtil.checkIsNull;
 import static io.trino.decoder.util.DecoderTestUtil.checkValue;
 import static io.trino.spi.type.BigintType.BIGINT;
@@ -71,7 +72,7 @@ public class TestJsonDecoder
         DecoderTestColumnHandle column5 = new DecoderTestColumnHandle(4, "column5", BOOLEAN, "user/geo_enabled", null, null, false, false, false);
 
         Set<DecoderColumnHandle> columns = ImmutableSet.of(column1, column2, column3, column4, column5);
-        RowDecoder rowDecoder = DECODER_FACTORY.create(emptyMap(), columns);
+        RowDecoder rowDecoder = DECODER_FACTORY.create(emptyMap(), columns, TESTING_SESSION);
 
         Map<DecoderColumnHandle, FieldValueProvider> decodedRow = rowDecoder.decodeRow(json)
                 .orElseThrow(AssertionError::new);
@@ -96,7 +97,7 @@ public class TestJsonDecoder
         DecoderTestColumnHandle column4 = new DecoderTestColumnHandle(3, "column4", BOOLEAN, "hello", null, null, false, false, false);
 
         Set<DecoderColumnHandle> columns = ImmutableSet.of(column1, column2, column3, column4);
-        RowDecoder rowDecoder = DECODER_FACTORY.create(emptyMap(), columns);
+        RowDecoder rowDecoder = DECODER_FACTORY.create(emptyMap(), columns, TESTING_SESSION);
 
         Map<DecoderColumnHandle, FieldValueProvider> decodedRow = rowDecoder.decodeRow(json)
                 .orElseThrow(AssertionError::new);
@@ -120,7 +121,7 @@ public class TestJsonDecoder
         DecoderTestColumnHandle column4 = new DecoderTestColumnHandle(3, "column4", BIGINT, "a_string", null, null, false, false, false);
 
         Set<DecoderColumnHandle> columns = ImmutableSet.of(column1, column2, column3, column4);
-        RowDecoder rowDecoder = DECODER_FACTORY.create(emptyMap(), columns);
+        RowDecoder rowDecoder = DECODER_FACTORY.create(emptyMap(), columns, TESTING_SESSION);
 
         Optional<Map<DecoderColumnHandle, FieldValueProvider>> decodedRow = rowDecoder.decodeRow(json);
         assertTrue(decodedRow.isPresent());
@@ -219,6 +220,6 @@ public class TestJsonDecoder
     private void singleColumnDecoder(Type columnType, String mapping, String dataFormat)
     {
         String formatHint = "custom-date-time".equals(dataFormat) ? "MM/yyyy/dd H:m:s" : null;
-        DECODER_FACTORY.create(emptyMap(), ImmutableSet.of(new DecoderTestColumnHandle(0, "some_column", columnType, mapping, dataFormat, formatHint, false, false, false)));
+        DECODER_FACTORY.create(emptyMap(), ImmutableSet.of(new DecoderTestColumnHandle(0, "some_column", columnType, mapping, dataFormat, formatHint, false, false, false)), TESTING_SESSION);
     }
 }

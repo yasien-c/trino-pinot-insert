@@ -15,6 +15,7 @@ package io.trino.decoder;
 
 import com.google.common.collect.ImmutableMap;
 import com.google.inject.Inject;
+import io.trino.spi.connector.ConnectorSession;
 
 import java.util.Map;
 import java.util.Set;
@@ -31,9 +32,9 @@ public class DispatchingRowDecoderFactory
         this.factories = ImmutableMap.copyOf(factories);
     }
 
-    public RowDecoder create(String dataFormat, Map<String, String> decoderParams, Set<DecoderColumnHandle> columns)
+    public RowDecoder create(String dataFormat, Map<String, String> decoderParams, Set<DecoderColumnHandle> columns, ConnectorSession session)
     {
         checkArgument(factories.containsKey(dataFormat), "unknown data format '%s'", dataFormat);
-        return factories.get(dataFormat).create(decoderParams, columns);
+        return factories.get(dataFormat).create(decoderParams, columns, session);
     }
 }

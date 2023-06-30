@@ -46,6 +46,7 @@ import java.util.Set;
 import static com.google.common.base.Preconditions.checkState;
 import static com.google.common.collect.Iterables.getOnlyElement;
 import static io.trino.decoder.avro.AvroRowDecoderFactory.DATA_SCHEMA;
+import static io.trino.decoder.util.DecoderTestUtil.TESTING_SESSION;
 import static io.trino.spi.type.BigintType.BIGINT;
 import static io.trino.spi.type.IntegerType.INTEGER;
 import static io.trino.spi.type.VarbinaryType.VARBINARY;
@@ -154,7 +155,7 @@ public class TestAvroConfluentRowDecoder
     private static RowDecoder getRowDecoder(SchemaRegistryClient schemaRegistryClient, Set<DecoderColumnHandle> columnHandles, Schema schema)
     {
         ImmutableMap<String, String> decoderParams = ImmutableMap.of(DATA_SCHEMA, schema.toString());
-        return getAvroRowDecoderyFactory(schemaRegistryClient).create(decoderParams, columnHandles);
+        return getAvroRowDecoderyFactory(schemaRegistryClient).create(decoderParams, columnHandles, TESTING_SESSION);
     }
 
     public static AvroRowDecoderFactory getAvroRowDecoderyFactory(SchemaRegistryClient schemaRegistryClient)

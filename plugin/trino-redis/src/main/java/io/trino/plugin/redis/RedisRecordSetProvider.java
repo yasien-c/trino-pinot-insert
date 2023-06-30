@@ -62,7 +62,8 @@ public class RedisRecordSetProvider
                 redisColumns.stream()
                         .filter(col -> !col.isInternal())
                         .filter(RedisColumnHandle::isKeyDecoder)
-                        .collect(toImmutableSet()));
+                        .collect(toImmutableSet()),
+                session);
 
         RowDecoder valueDecoder = decoderFactory.create(
                 redisSplit.getValueDataFormat(),
@@ -70,7 +71,8 @@ public class RedisRecordSetProvider
                 redisColumns.stream()
                         .filter(col -> !col.isInternal())
                         .filter(col -> !col.isKeyDecoder())
-                        .collect(toImmutableSet()));
+                        .collect(toImmutableSet()),
+                session);
 
         return new RedisRecordSet(redisSplit, jedisManager, redisColumns, keyDecoder, valueDecoder);
     }

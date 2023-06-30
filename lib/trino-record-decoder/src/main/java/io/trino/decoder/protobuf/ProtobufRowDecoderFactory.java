@@ -18,6 +18,7 @@ import io.trino.decoder.DecoderColumnHandle;
 import io.trino.decoder.RowDecoder;
 import io.trino.decoder.RowDecoderFactory;
 import io.trino.decoder.protobuf.DynamicMessageProvider.Factory;
+import io.trino.spi.connector.ConnectorSession;
 import io.trino.spi.type.TypeManager;
 
 import java.util.Map;
@@ -44,7 +45,7 @@ public class ProtobufRowDecoderFactory
     }
 
     @Override
-    public RowDecoder create(Map<String, String> decoderParams, Set<DecoderColumnHandle> columns)
+    public RowDecoder create(Map<String, String> decoderParams, Set<DecoderColumnHandle> columns, ConnectorSession session)
     {
         return new ProtobufRowDecoder(
                 dynamicMessageProviderFactory.create(Optional.ofNullable(decoderParams.get("dataSchema"))),

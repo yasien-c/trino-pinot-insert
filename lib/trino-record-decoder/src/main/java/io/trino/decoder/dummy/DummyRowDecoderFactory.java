@@ -16,6 +16,7 @@ package io.trino.decoder.dummy;
 import io.trino.decoder.DecoderColumnHandle;
 import io.trino.decoder.RowDecoder;
 import io.trino.decoder.RowDecoderFactory;
+import io.trino.spi.connector.ConnectorSession;
 
 import java.util.Map;
 import java.util.Set;
@@ -26,7 +27,7 @@ public class DummyRowDecoderFactory
     public static final RowDecoder DECODER_INSTANCE = new DummyRowDecoder();
 
     @Override
-    public RowDecoder create(Map<String, String> decoderParams, Set<DecoderColumnHandle> columns)
+    public RowDecoder create(Map<String, String> decoderParams, Set<DecoderColumnHandle> columns, ConnectorSession session)
     {
         return DECODER_INSTANCE;
     }

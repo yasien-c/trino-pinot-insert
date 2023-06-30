@@ -18,6 +18,7 @@ import io.trino.decoder.DecoderColumnHandle;
 import io.trino.decoder.RowDecoder;
 import io.trino.decoder.RowDecoderFactory;
 import io.trino.decoder.dummy.DummyRowDecoderFactory;
+import io.trino.spi.connector.ConnectorSession;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericRecord;
 
@@ -45,7 +46,7 @@ public class AvroRowDecoderFactory
     }
 
     @Override
-    public RowDecoder create(Map<String, String> decoderParams, Set<DecoderColumnHandle> columns)
+    public RowDecoder create(Map<String, String> decoderParams, Set<DecoderColumnHandle> columns, ConnectorSession session)
     {
         requireNonNull(columns, "columns is null");
         if (columns.isEmpty()) {

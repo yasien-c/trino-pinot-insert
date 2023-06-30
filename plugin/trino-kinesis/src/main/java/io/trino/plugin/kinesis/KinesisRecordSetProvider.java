@@ -80,7 +80,8 @@ public class KinesisRecordSetProvider
                 new HashMap<>(),
                 kinesisColumns.stream()
                         .filter(column -> !column.isInternal())
-                        .collect(toImmutableSet()));
+                        .collect(toImmutableSet()),
+                session);
 
         for (ColumnHandle handle : columns) {
             KinesisColumnHandle columnHandle = (KinesisColumnHandle) handle;

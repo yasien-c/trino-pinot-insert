@@ -26,6 +26,7 @@ import io.trino.spi.type.Type;
 import java.util.Map;
 import java.util.Optional;
 
+import static io.trino.decoder.util.DecoderTestUtil.TESTING_SESSION;
 import static java.lang.String.format;
 import static java.nio.charset.StandardCharsets.UTF_8;
 import static java.util.Collections.emptyMap;
@@ -130,7 +131,7 @@ public class JsonFieldDecoderTester
                 false,
                 false);
 
-        RowDecoder rowDecoder = DECODER_FACTORY.create(emptyMap(), ImmutableSet.of(columnHandle));
+        RowDecoder rowDecoder = DECODER_FACTORY.create(emptyMap(), ImmutableSet.of(columnHandle), TESTING_SESSION);
         Map<DecoderColumnHandle, FieldValueProvider> decodedRow = rowDecoder.decodeRow(json.getBytes(UTF_8))
                 .orElseThrow(AssertionError::new);
         assertTrue(decodedRow.containsKey(columnHandle), format("column '%s' not found in decoded row", columnHandle.getName()));

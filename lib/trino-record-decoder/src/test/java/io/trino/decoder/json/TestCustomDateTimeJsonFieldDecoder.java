@@ -19,6 +19,7 @@ import io.trino.decoder.DecoderTestColumnHandle;
 import io.trino.spi.TrinoException;
 import org.testng.annotations.Test;
 
+import static io.trino.decoder.util.DecoderTestUtil.TESTING_SESSION;
 import static io.trino.spi.type.DateTimeEncoding.packDateTimeWithZone;
 import static io.trino.spi.type.DateTimeEncoding.packTimeWithTimeZone;
 import static io.trino.spi.type.DateType.DATE;
@@ -98,7 +99,7 @@ public class TestCustomDateTimeJsonFieldDecoder
                 false,
                 false,
                 false);
-        assertThatThrownBy(() -> new JsonRowDecoderFactory(new ObjectMapperProvider().get()).create(emptyMap(), ImmutableSet.of(columnHandle)))
+        assertThatThrownBy(() -> new JsonRowDecoderFactory(new ObjectMapperProvider().get()).create(emptyMap(), ImmutableSet.of(columnHandle), TESTING_SESSION))
                 .isInstanceOf(TrinoException.class)
                 .hasMessageMatching("invalid Joda Time pattern 'XXMM/yyyy/dd H:m:sXX' passed as format hint for column 'some_column'");
     }

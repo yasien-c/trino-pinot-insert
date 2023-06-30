@@ -19,6 +19,7 @@ import io.trino.decoder.RowDecoderFactory;
 import io.trino.decoder.avro.AvroDeserializer;
 import io.trino.decoder.avro.SingleValueRowDecoder;
 import io.trino.decoder.dummy.DummyRowDecoderFactory;
+import io.trino.spi.connector.ConnectorSession;
 import org.apache.avro.LogicalTypes.TimeMillis;
 import org.apache.avro.Schema;
 import org.apache.kafka.common.serialization.ByteBufferDeserializer;
@@ -49,7 +50,7 @@ public class KafkaRowDecoderFactory
     private static final ByteBufferDeserializer BYTE_BUFFER_DESERIALIZER = new ByteBufferDeserializer();
 
     @Override
-    public RowDecoder create(Map<String, String> decoderParams, Set<DecoderColumnHandle> columns)
+    public RowDecoder create(Map<String, String> decoderParams, Set<DecoderColumnHandle> columns, ConnectorSession session)
     {
         requireNonNull(columns, "columns is null");
         if (columns.isEmpty()) {
