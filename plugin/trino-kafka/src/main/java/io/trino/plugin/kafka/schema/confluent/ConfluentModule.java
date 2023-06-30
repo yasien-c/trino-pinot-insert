@@ -46,6 +46,7 @@ import io.trino.decoder.protobuf.DynamicMessageProvider;
 import io.trino.decoder.protobuf.ProtobufRowDecoder;
 import io.trino.decoder.protobuf.ProtobufRowDecoderFactory;
 import io.trino.plugin.base.session.SessionPropertiesProvider;
+import io.trino.plugin.kafka.decoder.KafkaRowDecoderFactory;
 import io.trino.plugin.kafka.encoder.DispatchingRowEncoderFactory;
 import io.trino.plugin.kafka.encoder.RowEncoderFactory;
 import io.trino.plugin.kafka.encoder.avro.AvroRowEncoder;
@@ -147,6 +148,7 @@ public class ConfluentModule
             newMapBinder(binder, String.class, RowDecoderFactory.class).addBinding(AvroRowDecoderFactory.NAME).to(AvroRowDecoderFactory.class).in(Scopes.SINGLETON);
             newMapBinder(binder, String.class, RowDecoderFactory.class).addBinding(ProtobufRowDecoder.NAME).to(ProtobufRowDecoderFactory.class).in(Scopes.SINGLETON);
             newMapBinder(binder, String.class, RowDecoderFactory.class).addBinding(DummyRowDecoder.NAME).to(DummyRowDecoderFactory.class).in(SINGLETON);
+            newMapBinder(binder, String.class, RowDecoderFactory.class).addBinding(KafkaRowDecoderFactory.NAME).to(KafkaRowDecoderFactory.class).in(SINGLETON);
             binder.bind(DispatchingRowDecoderFactory.class).in(SINGLETON);
 
             configBinder(binder).bindConfig(ProtobufAnySupportConfig.class);
